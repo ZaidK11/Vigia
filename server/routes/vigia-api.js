@@ -21,10 +21,40 @@ if (!CLAUDE_API_KEY) {
 const client = new Anthropic({ apiKey: CLAUDE_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
 
-// VIGÍA system prompt — compliance engine identity
-const SYSTEM_PROMPT = `You are VIGÍA — the Compliance Kinetic Extension (CKE) for Airtm, a licensed fintech operating as a US MSB (FinCEN), Argentina VASP (UIF/CNV), and pending India FIU-IND registrant.
+// ── System prompts — role-based ──────────────────────────────────
 
-You are the analytical engine embedded in the VIGÍA Compliance Portal. Analysts submit compliance cases directly to you. You analyze and respond.
+// SUPPORT FORMAT: simple, conversational, no jargon, no markdown
+const SUPPORT_SYSTEM_PROMPT = `You are VIGÍA, an AI assistant embedded in Airtm's customer support portal.
+
+Your job: help support agents understand what's going on with a customer account and what to do next.
+
+IMPORTANT RULES:
+- Write like you're talking to a colleague who has no compliance background
+- NO markdown formatting (no **, no ##, no bullet points with *)
+- NO policy references (don't mention POL-BSA-001, CDD, OFAC, BSA, FinCEN, etc)
+- NO jargon (say "missing risk level" not "data integrity gap", say "flag this" not "escalate per PRO-TM-003")
+- Keep it SHORT — under 200 words total
+- Be direct and action-oriented
+
+ALWAYS use this exact format (plain text, no markdown):
+
+RISK LEVEL: [Low / Medium / High / Critical]
+
+ISSUE: [One sentence saying what the problem is]
+
+WHAT THIS MEANS: [2-3 sentences in plain English, like explaining to a friend]
+
+WHAT TO DO:
+1. [First action — specific and clear]
+2. [Second action]
+3. [Third action if needed]
+
+Be conversational. The agent needs to act quickly.`;
+
+// COMPLIANCE FORMAT: detailed, structured, policy refs OK, markdown OK
+const COMPLIANCE_SYSTEM_PROMPT = `You are VIGÍA — the Compliance Kinetic Extension (CKE) for Airtm, a licensed fintech operating as a US MSB (FinCEN), Argentina VASP (UIF/CNV), and pending India FIU-IND registrant.
+
+You are the analytical engine embedded in the VIGÍA Compliance Portal. Compliance analysts submit cases directly to you. You analyze and respond.
 
 ## Your operating standards:
 
@@ -53,15 +83,29 @@ You are the analytical engine embedded in the VIGÍA Compliance Portal. Analysts
 
 Be decisive. Be concise. Be defensible.`;
 
+// Select system prompt based on portal type
+function getSystemPrompt(portalType, language) {
+  const isSupport = portalType === 'support';
+  let prompt = isSupport ? SUPPORT_SYSTEM_PROMPT : COMPLIANCE_SYSTEM_PROMPT;
+  if (language === 'es') {
+    prompt += isSupport
+      ? '\n\nIMPORTANT: Provide your entire response in Spanish (Español). Same format, same rules, but in Spanish.'
+      : '\n\nIMPORTANT: Provide your entire response in Spanish (Español). Keep all formatting but write in Spanish.';
+  }
+  return prompt;
+}
+
 // POST /api/vigia/analyze
 router.post('/analyze', async (req, res) => {
-  const { command, portalType, resourceId, context } = req.body;
+  const { command, portalType, resourceId, context, language } = req.body;
 
   if (!command) {
     return res.status(400).json({ error: 'command is required' });
   }
 
   const startTime = Date.now();
+  const systemPrompt = getSystemPrompt(portalType, language);
+  const maxTokens = portalType === 'support' ? 512 : 1024; // shorter for support
 
   try {
     // Stream the response
@@ -72,8 +116,8 @@ router.post('/analyze', async (req, res) => {
 
     const stream = await client.messages.stream({
       model: MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      max_tokens: maxTokens,
+      system: systemPrompt,
       messages: [{ role: 'user', content: command }]
     });
 
@@ -119,15 +163,17 @@ router.post('/analyze', async (req, res) => {
 
 // POST /api/vigia/analyze-sync (non-streaming, for simpler clients)
 router.post('/analyze-sync', async (req, res) => {
-  const { command, portalType, resourceId } = req.body;
+  const { command, portalType, resourceId, language } = req.body;
 
   if (!command) return res.status(400).json({ error: 'command is required' });
+
+  const systemPrompt = getSystemPrompt(portalType, language);
 
   try {
     const message = await client.messages.create({
       model: MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      max_tokens: portalType === 'support' ? 512 : 1024,
+      system: systemPrompt,
       messages: [{ role: 'user', content: command }]
     });
 
