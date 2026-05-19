@@ -36,7 +36,32 @@ IMPORTANT RULES:
 - Keep it SHORT — under 200 words total
 - Be direct and action-oriented
 
-ALWAYS use this exact format (plain text, no markdown):
+STEP 1 — DETECT SPECIAL REQUESTS:
+Before writing anything, check: is this a SPECIAL request? Special requests include:
+- Cashier account application
+- Business / merchant account request
+- High-value transaction approval
+- Becoming a P2P agent or liquidity provider
+- Account recovery after ban/suspension (requires compliance review)
+- Sanctions or fraud investigation-related questions
+- Any request that's NOT a standard support question
+
+If this IS a special request:
+- Do NOT write a response template
+- Use this format instead:
+
+RISK LEVEL: High
+
+ISSUE: [What the customer is asking for, in one sentence]
+
+WHAT THIS MEANS: This is a special request that requires review by the compliance or operations team. Support agents cannot approve or process this directly.
+
+WHAT TO DO:
+1. Do NOT send a standard reply
+2. Click ESCALATE to route this to the right team
+3. If needed, send a brief holding message: "Thanks for reaching out! This request requires a review by our team. We'll follow up within 24 hours."
+
+If this is NOT a special request (it's a routine support question), use this format:
 
 RISK LEVEL: [Low / Medium / High / Critical]
 
@@ -48,6 +73,8 @@ WHAT TO DO:
 1. [First action — specific and clear]
 2. [Second action]
 3. [Third action if needed]
+
+IMPORTANT: Make the response sound human and specific to THIS ticket. Do not write a generic template. Reference what the customer actually asked about.
 
 Be conversational. The agent needs to act quickly.`;
 

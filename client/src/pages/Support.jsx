@@ -281,18 +281,32 @@ function TicketDetail({ ticketId, onClose }) {
           {vigiaUsed && <p className="text-[10px] text-blue-500 mt-1">Using VIGÍA suggestion — edit as needed</p>}
 
           <div className="flex gap-2 mt-3 flex-wrap">
-            <button onClick={() => sendReply(true)} disabled={!replyText.trim() || replySending}
+            <button
+              onClick={() => sendReply(true)}
+              disabled={!replyText.trim() || replySending}
+              title="Send this reply to the customer and mark the ticket Resolved in Freshdesk"
               className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white transition-all disabled:opacity-50">
               {replySending ? 'Sending...' : '✅ Send & Close'}
             </button>
-            <button onClick={() => sendReply(false)} disabled={!replyText.trim() || replySending}
+            <button
+              onClick={() => sendReply(false)}
+              disabled={!replyText.trim() || replySending}
+              title="Send this reply to the customer but keep the ticket open for follow-up"
               className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all">
               Send (keep open)
             </button>
-            <button onClick={escalate} disabled={escalating}
+            <button
+              onClick={escalate}
+              disabled={escalating}
+              title="Flag this ticket for compliance team review — tags it as compliance-escalated, sets priority to Urgent, and notifies Zaid"
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-all">
               {escalating ? '...' : '🚨 Escalate'}
             </button>
+          </div>
+          <div className="mt-2 flex gap-4">
+            <p className="text-[10px] text-gray-400"><strong>Send &amp; Close</strong> — sends email + resolves ticket in Freshdesk</p>
+            <p className="text-[10px] text-gray-400"><strong>Send (keep open)</strong> — sends email + keeps ticket open</p>
+            <p className="text-[10px] text-gray-400"><strong>Escalate</strong> — flags for compliance, Urgent priority, notifies Zaid</p>
           </div>
         </div>
       )}
@@ -454,7 +468,8 @@ export default function Support() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Name, email, or account ID..."
-            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white"
+            className="flex-1 px-4 py-2.5 rounded-xl border-2 border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+            style={{ color: '#111827' }}
           />
           <button type="submit" disabled={searchLoading}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60"
