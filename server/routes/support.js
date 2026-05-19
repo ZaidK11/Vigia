@@ -77,6 +77,139 @@ async function getUserByEmail(email) {
   return rows[0] || null;
 }
 
+// ── Risk scoring ─────────────────────────────────────────────────
+function computeRiskScore(user, ticket, priorTickets) {
+  let score = 0;
+  const factors = [];
+
+  // Account age
+  const age = user?.registered_at
+    ? Math.floor((Date.now() - new Date(user.registered_at)) / 86400000)
+    : null;
+  if (age !== null) {
+    if (age < 7) {
+      score += 25;
+      factors.push({ name: 'New account (<7 days)', contribution: 25, flag: 'red', detail: 'High fraud indicator' });
+    } else if (age < 30) {
+      score += 10;
+      factors.push({ name: 'Account <30 days old', contribution: 10, flag: 'yellow', detail: `${age} days old` });
+    } else if (age >= 365) {
+      score -= 10;
+      factors.push({ name: 'Established account (1+ year)', contribution: -10, flag: 'green', detail: `${Math.floor(age / 365)} year(s) old` });
+    }
+  }
+
+  // KYC document verification
+  const docVerified = user?.document_verified;
+  if (docVerified === 0 || docVerified === false || docVerified === '0') {
+    score += 20;
+    factors.push({ name: 'Identity not fully verified', contribution: 20, flag: 'red', detail: 'KYC document check incomplete' });
+  } else if (docVerified === 1 || docVerified === true || docVerified === '1') {
+    score -= 5;
+    factors.push({ name: 'Identity verified', contribution: -5, flag: 'green', detail: 'KYC document check passed' });
+  }
+
+  // Internal risk level
+  const riskLevel = (user?.risk_level || '').toLowerCase();
+  if (riskLevel === 'high') {
+    score += 30;
+    factors.push({ name: 'High internal risk classification', contribution: 30, flag: 'red', detail: 'Risk score from platform' });
+  } else if (riskLevel === 'medium') {
+    score += 15;
+    factors.push({ name: 'Medium internal risk classification', contribution: 15, flag: 'yellow', detail: 'Risk score from platform' });
+  } else if (riskLevel === 'low') {
+    score -= 5;
+    factors.push({ name: 'Low internal risk', contribution: -5, flag: 'green', detail: 'Risk score from platform' });
+  }
+
+  // Watchlist verification
+  const watchVerified = user?.watchlist_verified;
+  if (watchVerified === 0 || watchVerified === false || watchVerified === '0') {
+    score += 15;
+    factors.push({ name: 'Not cleared on watchlists', contribution: 15, flag: 'red', detail: 'Persona watchlist check pending' });
+  } else if (watchVerified === 1 || watchVerified === true || watchVerified === '1') {
+    score -= 5;
+    factors.push({ name: 'Watchlist clear', contribution: -5, flag: 'green', detail: 'Persona watchlist passed' });
+  }
+
+  // Prior contact frequency
+  const priorCount = (priorTickets || []).length;
+  if (priorCount > 5) {
+    score += 10;
+    factors.push({ name: 'High support contact frequency', contribution: 10, flag: 'yellow', detail: `${priorCount} tickets in 30 days` });
+  }
+
+  // Ticket priority
+  if (ticket?.priority === 4) {
+    score += 10;
+    factors.push({ name: 'Ticket flagged Urgent', contribution: 10, flag: 'red', detail: 'Freshdesk Urgent priority' });
+  }
+
+  // TODO: Add Kount score when API key is available (Merchant 171489)
+
+  score = Math.max(0, Math.min(100, score));
+
+  let level, verdict, nextSteps;
+  if (score >= 70) {
+    level = 'CRITICAL';
+    verdict = 'ESCALATE';
+    nextSteps = [
+      'Click ESCALATE to move to Fraud Investigation team',
+      'Do not approve any transactions without fraud review',
+      'Compliance team will reach out to customer directly'
+    ];
+  } else if (score >= 50) {
+    level = 'HIGH';
+    verdict = 'ESCALATE';
+    nextSteps = [
+      'Click ESCALATE to move to Fraud Investigation team',
+      'Do not approve any transactions without fraud review',
+      'Review account history before taking any action'
+    ];
+  } else if (score >= 30) {
+    level = 'MEDIUM';
+    verdict = 'VERIFY';
+    nextSteps = [
+      'Review account details carefully before responding',
+      'If uncertain about any transaction, verify customer intent',
+      'Use suggested response below, customize based on your review'
+    ];
+  } else {
+    level = 'LOW';
+    verdict = 'APPROVE';
+    nextSteps = [
+      'Routine inquiry — suggested response should be sufficient',
+      'Send & Close after reviewing the response',
+      'Monitor for follow-up contact'
+    ];
+  }
+
+  const confidence = score > 60 ? 'HIGH' : score > 35 ? 'MEDIUM' : 'LOW';
+
+  return { score, level, verdict, confidence, factors, nextSteps };
+}
+
+// ── Ticket summary ───────────────────────────────────────────────
+function buildTicketSummary(ticket, user, conv) {
+  const firstMsg = (conv[0]?.body_text || ticket.description_text || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .trim()
+    .slice(0, 250);
+
+  const age = user?.registered_at
+    ? Math.floor((Date.now() - new Date(user.registered_at)) / 86400000)
+    : null;
+  const kyc = (user?.document_verified === 1 || user?.document_verified === true || user?.document_verified === '1')
+    ? 'verified identity'
+    : 'unverified identity';
+  const accountCtx = age != null ? ` Account is ${age} days old with ${kyc}.` : '';
+
+  return firstMsg
+    ? `${firstMsg}${accountCtx}`
+    : `Ticket #${ticket.id}: ${ticket.subject}.${accountCtx}`;
+}
+
 // ── Build VIGÍA command for a ticket ────────────────────────────
 function buildTicketCommand(ticket, user, convHistory, priorTickets) {
   const age = user?.registered_at
@@ -114,31 +247,41 @@ Also note: is escalation to compliance needed? (YES/NO and why)`;
 // ── GET /api/support/tickets — open Freshdesk queue ─────────────
 router.get('/tickets', async (req, res) => {
   const tickets = await fdGet('/tickets', {
-    filter: 'new_and_my_open',
-    order_by: 'priority',
+    order_by: 'created_at',
     order_type: 'desc',
-    per_page: 30,
+    per_page: 50,
     include: 'requester,stats'
   });
 
   if (!tickets) return res.json({ tickets: [], error: 'Freshdesk unavailable' });
 
-  const simplified = tickets.map(t => ({
-    id: t.id,
-    subject: t.subject,
-    status: t.status,
-    priority: t.priority,
-    email: t.requester?.email,
-    name: t.requester?.name,
-    created_at: t.created_at,
-    updated_at: t.updated_at,
-    first_responded_at: t.stats?.first_responded_at,
-    resolved_at: t.stats?.resolved_at,
-    group_id: t.group_id,
-    tags: t.tags || []
-  }));
+  const enriched = tickets
+    .filter(t => t.status === 2 || t.status === 3) // Open or Pending only
+    .map(t => {
+      const hoursOpen = Math.floor((Date.now() - new Date(t.created_at)) / 3600000);
+      const isUrgent = hoursOpen >= 3;
+      const urgencyScore = (t.priority || 1) * 10 + (isUrgent ? 20 : 0);
+      return {
+        id: t.id,
+        subject: t.subject,
+        status: t.status,
+        priority: t.priority,
+        email: t.requester?.email,
+        name: t.requester?.name,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        first_responded_at: t.stats?.first_responded_at,
+        resolved_at: t.stats?.resolved_at,
+        group_id: t.group_id,
+        tags: t.tags || [],
+        hoursOpen,
+        isUrgent,
+        urgencyScore
+      };
+    })
+    .sort((a, b) => b.urgencyScore - a.urgencyScore);
 
-  res.json({ tickets: simplified });
+  res.json({ tickets: enriched });
 });
 
 // ── GET /api/support/ticket/:id — full detail + analysis ────────
@@ -169,13 +312,15 @@ router.get('/ticket/:id', async (req, res) => {
   }));
 
   const command = buildTicketCommand(ticket, user, conv, priorTickets);
+  const risk = computeRiskScore(user, ticket, priorTickets);
+  const summary = buildTicketSummary(ticket, user, conv);
 
   if (req.user) {
     logAction({
       userEmail: req.user.email,
       action: 'SUPPORT_TICKET_VIEW',
       resourceId: `FD-${id}`,
-      details: { customerEmail: email, subject: ticket.subject }
+      details: { customerEmail: email, subject: ticket.subject, riskLevel: risk.level }
     });
   }
 
@@ -199,6 +344,8 @@ router.get('/ticket/:id', async (req, res) => {
       status: t.status,
       created_at: t.created_at
     })),
+    risk,
+    summary,
     command
   });
 });
@@ -254,7 +401,7 @@ router.post('/ticket/:id/escalate', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── POST /api/support/search — user search (existing) ───────────
+// ── POST /api/support/search — user search ───────────────────────
 router.post('/search', async (req, res) => {
   const { query: searchQuery, commandType = 'account' } = req.body;
   if (!searchQuery) return res.status(400).json({ error: 'query required' });

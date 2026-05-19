@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import SearchBox from '../components/SearchBox.jsx';
 import UserCard from '../components/UserCard.jsx';
@@ -7,6 +7,13 @@ import VigiaResponse from '../components/VigiaResponse.jsx';
 const PRIORITY_LABEL = ['', 'Low', 'Medium', 'High', 'Urgent'];
 const PRIORITY_CLASS = ['', 'badge-gray', 'badge-pending', 'priority-medium', 'priority-high'];
 const STATUS_LABEL = { 2: 'Open', 3: 'Pending', 4: 'Resolved', 5: 'Closed', 6: 'Waiting on Customer' };
+
+const RISK_COLORS = {
+  CRITICAL: 'bg-red-100 text-red-700 border-red-200',
+  HIGH: 'bg-orange-100 text-orange-700 border-orange-200',
+  MEDIUM: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  LOW: 'bg-green-100 text-green-700 border-green-200',
+};
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -17,6 +24,13 @@ function timeAgo(ts) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function secAgo(ts) {
+  if (!ts) return '';
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  return `${Math.floor(secs / 60)}m ago`;
+}
+
 function getToken() { return localStorage.getItem('vigia_token'); }
 const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
@@ -24,6 +38,7 @@ export default function Support() {
   const [view, setView] = useState('queue'); // 'queue' | 'search'
   const [tickets, setTickets] = useState([]);
   const [ticketsLoading, setTicketsLoading] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState(Date.now());
   const [selected, setSelected] = useState(null);
   const [ticketData, setTicketData] = useState(null);
   const [ticketLoading, setTicketLoading] = useState(false);
@@ -34,18 +49,39 @@ export default function Support() {
   const [escalated, setEscalated] = useState(false);
   const [vigiaCommand, setVigiaCommand] = useState('');
   const [vigiaUsed, setVigiaUsed] = useState(false);
+  const [, setTick] = useState(0); // for refreshed-time display
 
   // Search state
   const [searchResult, setSearchResult] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchCommand, setSearchCommand] = useState('');
 
-  useEffect(() => {
+  const fetchTickets = useCallback((showSpinner = false) => {
+    if (showSpinner) setTicketsLoading(true);
     fetch('/api/support/tickets', { headers: authHdr() })
       .then(r => r.json())
-      .then(d => setTickets(d.tickets || []))
+      .then(d => {
+        const sorted = (d.tickets || []).sort((a, b) => (b.urgencyScore || 0) - (a.urgencyScore || 0));
+        setTickets(sorted);
+        setLastRefreshed(Date.now());
+      })
       .catch(() => setTickets([]))
       .finally(() => setTicketsLoading(false));
+  }, []);
+
+  // Initial load
+  useEffect(() => { fetchTickets(true); }, [fetchTickets]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => fetchTickets(false), 30000);
+    return () => clearInterval(interval);
+  }, [fetchTickets]);
+
+  // Tick every 15s to update "refreshed X ago" display
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const selectTicket = async (t) => {
@@ -69,7 +105,6 @@ export default function Support() {
   const handleVigiaComplete = (responseText) => {
     // Auto-populate reply with VIGÍA's suggested response
     const lines = responseText.split('\n');
-    // Find the suggested response section
     const respIdx = lines.findIndex(l => l.toLowerCase().includes('response:') || l.toLowerCase().includes('hi ') || l.toLowerCase().includes('dear '));
     if (respIdx >= 0) {
       setReplyText(lines.slice(respIdx).join('\n').trim());
@@ -87,7 +122,6 @@ export default function Support() {
         body: JSON.stringify({ body: replyText, close, usedVigiaFlag: vigiaUsed })
       });
       setReplySent(true);
-      // Remove from queue
       setTickets(prev => prev.filter(t => t.id !== selected.id));
     } catch {}
     setReplySending(false);
@@ -127,14 +161,22 @@ export default function Support() {
   const conv = ticketData?.conversation || [];
   const user = ticketData?.user;
   const prior = ticketData?.priorTickets || [];
+  const risk = ticketData?.risk;
+  const summary = ticketData?.summary;
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Left: Queue */}
       <div className="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0 md:overflow-y-auto max-h-64 md:max-h-full">
         <div className="px-4 py-3 border-b border-gray-100">
-          <h2 className="font-bold text-gray-900">Support Portal</h2>
-          <div className="flex gap-1 mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-bold text-gray-900">Support Portal</h2>
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-gray-400">Refreshed {secAgo(lastRefreshed)}</span>
+            <button onClick={() => fetchTickets(false)} className="text-[10px] text-[#00C9A7] hover:text-[#00a88d] font-medium">↻ Refresh</button>
+          </div>
+          <div className="flex gap-1">
             <button onClick={() => setView('queue')}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${view === 'queue' ? 'bg-[#00C9A7] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
               Queue {ticketsLoading ? '' : `(${tickets.length})`}
@@ -156,15 +198,19 @@ export default function Support() {
             )}
             {tickets.map(t => (
               <div key={t.id} onClick={() => selectTicket(t)}
-                className={`queue-item ${selected?.id === t.id ? 'queue-item-active' : ''}`}>
+                className={`queue-item ${selected?.id === t.id ? 'queue-item-active' : ''} ${t.isUrgent ? 'border-l-2 border-orange-400' : ''}`}>
                 <div className="flex items-start justify-between mb-1">
                   <span className="text-xs font-bold text-gray-600">#{t.id}</span>
                   <span className={PRIORITY_CLASS[t.priority] || 'badge-gray'}>{PRIORITY_LABEL[t.priority]}</span>
                 </div>
-                <p className="text-xs font-medium text-gray-800 leading-snug mb-1 line-clamp-2">{t.subject}</p>
+                <p className="text-xs font-medium text-gray-800 leading-snug mb-1 line-clamp-2">
+                  {t.isUrgent ? '⚠️ ' : ''}{t.subject}
+                </p>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-gray-400">{t.name || t.email?.split('@')[0]}</span>
-                  <span className="text-[10px] text-gray-400">{timeAgo(t.created_at)}</span>
+                  <span className={`text-[10px] font-medium ${t.isUrgent ? 'text-orange-500' : 'text-gray-400'}`}>
+                    {t.hoursOpen != null ? `${t.hoursOpen}h open` : timeAgo(t.created_at)}
+                  </span>
                 </div>
               </div>
             ))}
@@ -224,6 +270,9 @@ export default function Support() {
                         <span className="text-xs font-bold text-gray-500">#{ticket.id}</span>
                         <span className={PRIORITY_CLASS[ticket.priority] || 'badge-gray'}>{PRIORITY_LABEL[ticket.priority]}</span>
                         <span className="badge-gray">{STATUS_LABEL[ticket.status]}</span>
+                        {selected?.isUrgent && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-orange-100 text-orange-700">⚠️ {selected.hoursOpen}h open</span>
+                        )}
                       </div>
                       <h3 className="font-bold text-gray-900">{ticket.subject}</h3>
                       <p className="text-xs text-gray-500 mt-0.5">
@@ -231,6 +280,14 @@ export default function Support() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Issue Summary */}
+                  {summary && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-3">
+                      <p className="text-xs font-semibold text-blue-700 mb-1">Issue Summary</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
+                    </div>
+                  )}
 
                   {/* Conversation */}
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3 max-h-48 overflow-y-auto">
@@ -253,6 +310,70 @@ export default function Support() {
                   <div className="mb-4">
                     <UserCard user={user} risk={{ risk_level: user.risk_level, score: user.score }}
                       extra={{ txnCount: ticketData?.user?.txnCount }} />
+                  </div>
+                )}
+
+                {/* Vigía Verdict */}
+                {risk && (
+                  <div className="card mb-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="section-label">Vigía Verdict</p>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-lg border ${RISK_COLORS[risk.level] || 'bg-gray-100 text-gray-700'}`}>
+                        {risk.level} — {risk.score}/100
+                      </span>
+                    </div>
+
+                    {/* Risk factors */}
+                    <div className="space-y-1.5 mb-3">
+                      {risk.factors.map((f, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="text-xs mt-0.5">
+                            {f.flag === 'red' ? '❌' : f.flag === 'green' ? '✅' : '⚠️'}
+                          </span>
+                          <div className="flex-1">
+                            <span className="text-xs text-gray-700">{f.name}</span>
+                            {f.detail && <span className="text-[10px] text-gray-400 ml-1">— {f.detail}</span>}
+                          </div>
+                          <span className={`text-xs font-medium ${f.contribution > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                            {f.contribution > 0 ? '+' : ''}{f.contribution}
+                          </span>
+                        </div>
+                      ))}
+                      {risk.factors.length === 0 && (
+                        <p className="text-xs text-gray-400">No account data available — risk assessment incomplete</p>
+                      )}
+                    </div>
+
+                    {/* Next steps */}
+                    <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Recommended: {risk.verdict}</p>
+                      <ul className="space-y-1">
+                        {risk.nextSteps.map((step, i) => (
+                          <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                            <span className="text-gray-400 mt-0.5">{i + 1}.</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Quick action based on verdict */}
+                    {risk.verdict === 'ESCALATE' && !escalated && (
+                      <button onClick={escalate} disabled={escalating}
+                        className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-all disabled:opacity-60">
+                        {escalating ? 'Escalating...' : '🚨 Escalate to Compliance Team'}
+                      </button>
+                    )}
+                    {risk.verdict === 'VERIFY' && (
+                      <div className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 text-center font-medium">
+                        ⚠️ Verify customer intent before closing this ticket
+                      </div>
+                    )}
+                    {risk.verdict === 'APPROVE' && (
+                      <div className="text-xs text-green-700 bg-green-50 rounded-lg p-2 text-center font-medium">
+                        ✅ Routine inquiry — proceed with suggested response
+                      </div>
+                    )}
                   </div>
                 )}
 
