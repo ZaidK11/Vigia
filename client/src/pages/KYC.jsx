@@ -2,20 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import VigiaResponse from '../components/VigiaResponse.jsx';
 
-const REQUEST_DOCS = ['Proof of Address', 'Additional Government ID', 'Income / Source of Funds Proof', 'Business Registration (KYB)', 'Other'];
-const REJECT_REASONS = ['ID Document Quality Poor', 'Sanctions / Watchlist Match', 'Fraud Suspected', 'Incomplete Documents', 'Country Restriction (Policy)', 'PEP — Not Disclosed', 'Other'];
-
-function DocRow({ label, verified }) {
-  return (
-    <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-sm font-semibold ${verified ? 'text-emerald-600' : 'text-gray-400'}`}>
-        {verified ? '✓ Verified' : '— Pending'}
-      </span>
-    </div>
-  );
-}
-
 function timeAgo(ts) {
   if (!ts) return '';
   const d = Math.floor((Date.now() - new Date(ts)) / 86400000);
@@ -27,27 +13,106 @@ function timeAgo(ts) {
 function getToken() { return localStorage.getItem('vigia_token'); }
 const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
-// ── Application Detail ──────────────────────────────────────────
+// ── Build investigation command ──────────────────────────────────
+function buildKycInvestigationCommand(app) {
+  return `You are a KYC verification analyst at Airtm, a US MSB (FinCEN) and Argentina VASP (UIF/CNV).
+
+Analyze this KYC application and provide a verdict.
+
+Application ID: ${app.id}
+Applicant: ${app.name || 'Unknown'}
+Country: ${app.country || 'Unknown'}
+KYC Tier: ${app.kycTier != null ? `Tier ${app.kycTier}` : 'Not assigned'}
+Inquiry status: ${app.inquiryStatus || 'Unknown'}
+Persona status: ${app.personaStatus || 'Unknown'}
+
+Document verification:
+- Identity document: ${app.documentVerified ? 'VERIFIED' : 'NOT VERIFIED'}
+- Facial / liveness check: ${app.facialVerified ? 'VERIFIED' : 'NOT VERIFIED'}
+- Watchlist / sanctions screening: ${app.watchlistVerified ? 'CLEAR' : 'NOT CLEARED'}
+
+REQUIRED OUTPUT FORMAT — use exactly this structure:
+
+VERDICT: [APPROVE / REQUEST_DOCS / REJECT]
+CONFIDENCE: [0-100]%
+KEY FACTORS:
+- [Factor 1 — specific finding about verification or risk]
+- [Factor 2]
+- [Factor 3 if applicable]
+REASONING: [2-3 sentences explaining the verdict, tied to specific verification data above]
+NEXT STEP: [One clear action — who does what right now]
+
+If APPROVE: Explain what makes this application approvable and confidence in verification.
+If REQUEST_DOCS: List exactly which documents are needed and why each is required.
+If REJECT: Cite the specific regulatory reason (sanctions match, fraud pattern, policy restriction, etc).`;
+}
+
+// ── Build conditional output commands ────────────────────────────
+function buildOutputCommand(type, app, verdict) {
+  if (type === 'approval_rec') {
+    return `Write a 3-sentence approval recommendation for Jira comment. Application ${app.id}, applicant from ${app.country || 'Unknown'}. All documents verified. Persona status: ${app.personaStatus}. KYC Tier ${app.kycTier}. State why this application meets approval criteria under BSA/FinCEN CDD requirements. Passive voice, factual, no customer-facing language.`;
+  }
+  if (type === 'doc_request') {
+    return `Write a Jira comment explaining what documents are needed for application ${app.id}.
+Current status: Identity ${app.documentVerified ? 'verified' : 'NOT verified'} | Facial ${app.facialVerified ? 'verified' : 'NOT verified'} | Watchlist ${app.watchlistVerified ? 'clear' : 'NOT cleared'}.
+Country: ${app.country || 'Unknown'}.
+List exactly which documents are missing, why each is required under BSA/FinCEN CDD rules, and what the applicant needs to submit. Factual, internal compliance language.`;
+  }
+  if (type === 'doc_email') {
+    return `Write a short, polite customer-facing email asking for the missing documents for this KYC application.
+Missing: Identity ${!app.documentVerified ? 'document' : ''} ${!app.facialVerified ? '| selfie/liveness' : ''} ${!app.watchlistVerified ? '| additional screening required' : ''}.
+Keep it simple, friendly, under 100 words. Do NOT mention regulatory requirements or internal systems. Just tell them what they need to send and why (to complete their verification). Sign as "Airtm Compliance Team".`;
+  }
+  if (type === 'rejection_reason') {
+    return `Write a Jira comment explaining the rejection reason for KYC application ${app.id}.
+Persona status: ${app.personaStatus}. Watchlist cleared: ${app.watchlistVerified ? 'Yes' : 'No'}.
+Explain the regulatory basis for rejection (cite relevant BSA/FinCEN or UIF policy). Factual, passive voice, no customer-facing language.`;
+  }
+  if (type === 'rejection_email') {
+    return `Write a short, professional customer-facing email notifying the applicant that their KYC verification could not be completed at this time.
+Do NOT reveal specific reasons (regulatory requirement). Keep it under 80 words. Mention they can contact support if they have questions. Sign as "Airtm Compliance Team". No jargon.`;
+  }
+  return '';
+}
+
+// ── Application Detail ────────────────────────────────────────────
 function AppDetail({ appId, onClose }) {
   const [appData, setAppData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [decision, setDecision] = useState(null);
-  const [decisionDetail, setDecisionDetail] = useState('');
-  const [logged, setLogged] = useState(false);
+  const [verdict, setVerdict] = useState(null); // APPROVE | REQUEST_DOCS | REJECT
+  const [investigationDone, setInvestigationDone] = useState(false);
+  const [activeOutput, setActiveOutput] = useState(null);
+  const [outputCommand, setOutputCommand] = useState('');
+  const [decisionLogged, setDecisionLogged] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setAppData(null);
+    setVerdict(null);
+    setInvestigationDone(false);
+    setActiveOutput(null);
+    setDecisionLogged(false);
     api.kyc.application(appId)
       .then(setAppData)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [appId]);
 
-  const logDecision = async (d, detail = '') => {
-    setDecision(d);
+  const handleAnalysisComplete = (text) => {
+    const m = text.match(/VERDICT:\s*(APPROVE|REQUEST_DOCS|REJECT)/i);
+    if (m) setVerdict(m[1].toUpperCase());
+    setInvestigationDone(true);
+  };
+
+  const showOutput = (type) => {
+    setActiveOutput(type);
+    setOutputCommand(buildOutputCommand(type, appData?.application || {}, verdict));
+  };
+
+  const logDecision = async (decision) => {
     try {
-      await api.kyc.decision(appId, d, detail || decisionDetail);
-      setLogged(true);
+      await api.kyc.decision(appId, decision, `Verdict: ${verdict}`);
+      setDecisionLogged(true);
     } catch {}
   };
 
@@ -61,27 +126,45 @@ function AppDetail({ appId, onClose }) {
   const app = appData?.application;
   if (!app) return <div className="p-6 text-sm text-gray-400">Application not found.</div>;
 
+  const investigationCommand = buildKycInvestigationCommand(app);
+
+  const verdictColor = {
+    APPROVE: 'bg-green-100 text-green-700 border-green-200',
+    REQUEST_DOCS: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    REJECT: 'bg-red-100 text-red-700 border-red-200',
+  }[verdict] || '';
+
   return (
     <div className="p-5 max-w-2xl">
+      {/* Header */}
       <div className="flex items-center gap-2 mb-5">
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">←</button>
         <div>
-          <h3 className="font-bold text-gray-900 text-sm">{app.name}</h3>
-          <p className="text-xs text-gray-400">{app.id} · {app.country || 'Unknown country'} · {app.inquiryStatus}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-gray-900 text-sm">{app.name || app.id}</span>
+            {verdict && (
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${verdictColor}`}>
+                {verdict.replace('_', ' ')}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">{app.id} · {app.country || '—'} · {app.inquiryStatus}</p>
         </div>
       </div>
 
-      {/* Account context */}
+      {/* Application data panel */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Applicant Context</p>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Application Data</p>
+
+        {/* Key facts grid */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
           {[
             ['Name', app.name],
-            ['Email', app.email || '—'],
             ['Country', app.country || '—'],
             ['KYC Tier', app.kycTier != null ? `Tier ${app.kycTier}` : '—'],
-            ['Persona Status', app.personaStatus || '—'],
-            ['Inquiry Status', app.inquiryStatus || '—'],
+            ['Inquiry status', app.inquiryStatus || '—'],
+            ['Persona status', app.personaStatus || '—'],
+            ['Email', app.email || '—'],
           ].map(([label, val]) => (
             <div key={label}>
               <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
@@ -89,76 +172,198 @@ function AppDetail({ appId, onClose }) {
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Documents */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Verification Status</p>
-        <DocRow label="Identity Document" verified={app.documentVerified} />
-        <DocRow label="Facial / Liveness Check" verified={app.facialVerified} />
-        <DocRow label="Watchlist / Sanctions" verified={app.watchlistVerified} />
-      </div>
-
-      {/* EDD Analysis */}
-      {appData?.command && (
-        <div className="mb-4">
-          <VigiaResponse command={appData.command} portalType="kyc" resourceId={app.id}
-            label="Run EDD Analysis" />
-        </div>
-      )}
-
-      {/* Decision */}
-      {!logged ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Log Decision</p>
-
-          <div className="grid grid-cols-3 gap-2 mb-4">
+        {/* Document verification status */}
+        <div className="border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Verification Status</p>
+          <div className="space-y-2">
             {[
-              { d: 'APPROVE', label: '✅ Approve', color: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
-              { d: 'REQUEST_DOCS', label: '📋 Request Docs', color: 'border-yellow-300 bg-yellow-50 text-yellow-700' },
-              { d: 'REJECT', label: '❌ Reject', color: 'border-red-300 bg-red-50 text-red-700' },
-            ].map(b => (
-              <button key={b.d} onClick={() => setDecision(b.d)}
-                className={`py-2 rounded-lg border text-xs font-semibold transition-all ${decision === b.d ? b.color : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-                {b.label}
-              </button>
+              ['Identity Document', app.documentVerified],
+              ['Facial / Liveness Check', app.facialVerified],
+              ['Watchlist / Sanctions', app.watchlistVerified],
+            ].map(([label, verified]) => (
+              <div key={label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                <span className="text-sm text-gray-600">{label}</span>
+                <span className={`text-sm font-semibold ${verified ? 'text-green-600' : 'text-red-500'}`}>
+                  {verified ? '✓ Verified' : '✗ Not verified'}
+                </span>
+              </div>
             ))}
           </div>
-
-          {decision === 'REQUEST_DOCS' && (
-            <select className="w-full border border-gray-200 rounded-lg p-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-200"
-              value={decisionDetail} onChange={e => setDecisionDetail(e.target.value)}>
-              <option value="">Select document needed...</option>
-              {REQUEST_DOCS.map(d => <option key={d}>{d}</option>)}
-            </select>
-          )}
-          {decision === 'REJECT' && (
-            <select className="w-full border border-gray-200 rounded-lg p-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-200"
-              value={decisionDetail} onChange={e => setDecisionDetail(e.target.value)}>
-              <option value="">Select rejection reason...</option>
-              {REJECT_REASONS.map(r => <option key={r}>{r}</option>)}
-            </select>
-          )}
-          {decision && (
-            <button onClick={() => logDecision(decision)}
-              disabled={(['REQUEST_DOCS', 'REJECT'].includes(decision) && !decisionDetail)}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
-              style={{ background: decision === 'APPROVE' ? '#059669' : decision === 'REJECT' ? '#DC2626' : '#D97706' }}>
-              Log {decision} Decision
-            </button>
-          )}
         </div>
-      ) : (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center mb-4">
-          <p className="font-semibold text-emerald-700">Decision logged: {decision}</p>
-          <p className="text-xs text-gray-500 mt-1">Recorded in audit trail</p>
+
+        {/* Risk indicators */}
+        {(!app.documentVerified || !app.facialVerified || !app.watchlistVerified) && (
+          <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <p className="text-xs font-semibold text-amber-700 mb-1">Missing verifications</p>
+            <div className="space-y-0.5">
+              {!app.documentVerified && <p className="text-xs text-amber-700">· Identity document not verified</p>}
+              {!app.facialVerified && <p className="text-xs text-amber-700">· Facial / liveness check not verified</p>}
+              {!app.watchlistVerified && <p className="text-xs text-amber-700">· Watchlist screening not cleared</p>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Investigation — single button */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Investigation</p>
+        <VigiaResponse
+          command={investigationCommand}
+          portalType="kyc"
+          resourceId={app.id}
+          label="🪪 Get KYC Verdict"
+          onComplete={handleAnalysisComplete}
+        />
+      </div>
+
+      {/* Conditional outputs — only after verdict */}
+      {investigationDone && verdict && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Next Steps</p>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${verdictColor}`}>
+              {verdict.replace('_', ' ')}
+            </span>
+          </div>
+
+          {/* Output buttons — conditional */}
+          <div className="space-y-2 mb-4">
+            {verdict === 'APPROVE' && (
+              <button onClick={() => showOutput('approval_rec')}
+                className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeOutput === 'approval_rec' ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">✅ Get Approval Recommendation</p>
+                  <p className="text-xs text-gray-500">Jira comment — why this application meets criteria</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
+
+            {verdict === 'REQUEST_DOCS' && (
+              <>
+                <button onClick={() => showOutput('doc_request')}
+                  className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeOutput === 'doc_request' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">📋 Get Document Request (Jira)</p>
+                    <p className="text-xs text-gray-500">Which docs needed and why — for Jira comment</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button onClick={() => showOutput('doc_email')}
+                  className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeOutput === 'doc_email' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">✉️ Get Document Request Email</p>
+                    <p className="text-xs text-gray-500">Customer-facing email — polite, no jargon</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            {verdict === 'REJECT' && (
+              <>
+                <button onClick={() => showOutput('rejection_reason')}
+                  className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeOutput === 'rejection_reason' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">❌ Get Rejection Reason (Jira)</p>
+                    <p className="text-xs text-gray-500">Regulatory basis for rejection — for Jira comment</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button onClick={() => showOutput('rejection_email')}
+                  className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeOutput === 'rejection_email' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">✉️ Get Rejection Email</p>
+                    <p className="text-xs text-gray-500">Customer-facing — no regulatory detail revealed</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Output panel */}
+          {activeOutput && outputCommand && (
+            <div className="mb-4">
+              <VigiaResponse
+                command={outputCommand}
+                portalType="kyc"
+                resourceId={`${app.id}-${activeOutput}`}
+                label={activeOutput.includes('email') ? '✉️ Generate Email' : '📋 Generate Jira Comment'}
+              />
+              <p className="text-xs text-gray-400 mt-2 text-center">
+                ↑ Copy this text and paste {activeOutput.includes('email') ? 'into Freshdesk / email' : 'into Jira'} manually
+              </p>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Log Action</p>
+
+            {verdict === 'APPROVE' && (
+              <div className="flex gap-2">
+                <button onClick={() => logDecision('APPROVE')} disabled={decisionLogged}
+                  title="Log application approval — analyst completes verification in Persona"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white transition-all disabled:opacity-50">
+                  Approve Application
+                </button>
+              </div>
+            )}
+
+            {verdict === 'REQUEST_DOCS' && (
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => logDecision('REQUEST_DOCS')} disabled={decisionLogged}
+                  title="Log document request sent — awaiting customer response"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition-all disabled:opacity-50">
+                  Send Request
+                </button>
+                <button onClick={() => logDecision('REJECT')} disabled={decisionLogged}
+                  title="Log rejection if customer does not respond within SLA"
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-all disabled:opacity-50">
+                  Reject (No Response)
+                </button>
+              </div>
+            )}
+
+            {verdict === 'REJECT' && (
+              <div className="flex gap-2">
+                <button onClick={() => logDecision('REJECT')} disabled={decisionLogged}
+                  title="Log application rejection — audit trail entry created"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-all disabled:opacity-50">
+                  Reject Application
+                </button>
+              </div>
+            )}
+
+            {decisionLogged && (
+              <div className="mt-3 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+                <p className="text-xs font-medium text-green-700">✓ Decision logged to audit trail</p>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-400 mt-3">
+              All logged actions are recorded in the audit trail. Analyst must complete the action in Persona separately.
+            </p>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Status Group ────────────────────────────────────────────────
+// ── Status Group ──────────────────────────────────────────────────
 function StatusGroup({ icon, label, count, onClickAll }) {
   return (
     <button onClick={onClickAll}
@@ -175,7 +380,7 @@ function StatusGroup({ icon, label, count, onClickAll }) {
   );
 }
 
-// ── Main KYC Component ──────────────────────────────────────────
+// ── Main KYC Component ────────────────────────────────────────────
 export default function KYC() {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -197,20 +402,13 @@ export default function KYC() {
     if (!searchQuery.trim()) { setSearchResults(null); return; }
     setSearchLoading(true);
     try {
-      // Search in loaded apps
       const q = searchQuery.toLowerCase();
       const matched = apps.filter(a =>
         a.id?.toLowerCase().includes(q) ||
         a.userId?.toLowerCase().includes(q) ||
         a.status?.toLowerCase().includes(q)
       );
-      // Also search by email via ClickHouse
-      const r = await fetch('/api/support/search', {
-        method: 'POST', headers: authHdr(),
-        body: JSON.stringify({ query: searchQuery.trim() })
-      });
-      const userData = await r.json();
-      setSearchResults({ apps: matched, userData });
+      setSearchResults(matched);
     } catch {}
     setSearchLoading(false);
   };
@@ -222,6 +420,9 @@ export default function KYC() {
       </div>
     );
   }
+
+  const pending = apps.filter(a => ['pending', 'needs_review', 'created'].includes(a.status));
+  const waiting = apps.filter(a => ['waiting', 'failed'].includes(a.status));
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -235,7 +436,7 @@ export default function KYC() {
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
             placeholder="User name, email, account ID, or Persona ID..."
-            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+            className="flex-1 px-4 py-2.5 rounded-xl border-2 border-purple-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
           />
           <button type="submit" disabled={searchLoading}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60"
@@ -246,42 +447,31 @@ export default function KYC() {
       </div>
 
       {/* Search results */}
-      {searchResults && (
-        <div className="mb-6 space-y-3">
-          {searchResults.apps?.length > 0 && (
+      {searchResults !== null && (
+        <div className="mb-6">
+          {searchResults.length > 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-xs font-semibold text-gray-600">
-                  {searchResults.apps.length} application(s) matching "{searchQuery}"
-                </p>
+                <p className="text-xs font-semibold text-gray-600">{searchResults.length} result(s) for "{searchQuery}"</p>
               </div>
-              {searchResults.apps.map(a => (
+              {searchResults.map(a => (
                 <button key={a.id} onClick={() => setSelectedId(a.id)}
                   className="w-full text-left px-4 py-3.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{a.id}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate">{a.id}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{a.status} · {a.country || '—'} · {timeAgo(a.created)}</p>
                     </div>
-                    <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                 </button>
               ))}
             </div>
-          )}
-          {searchResults.apps?.length === 0 && (
+          ) : (
             <div className="rounded-xl border border-gray-200 bg-white p-4 text-center text-sm text-gray-400">
               No applications found for "{searchQuery}"
-            </div>
-          )}
-          {/* Account info if email search */}
-          {searchResults.userData?.user && !searchResults.userData?.user?.note && (
-            <div className="rounded-xl border border-purple-100 bg-purple-50 p-4">
-              <p className="text-xs font-semibold text-purple-700 mb-2">Account Found</p>
-              <p className="text-sm text-gray-800">{searchResults.userData.user.first_name} {searchResults.userData.user.last_name}</p>
-              <p className="text-xs text-gray-500">{searchResults.userData.user.email} · Risk: {searchResults.userData.risk?.risk_level || '—'}</p>
             </div>
           )}
         </div>
@@ -290,24 +480,23 @@ export default function KYC() {
       {/* Applications by status — SECONDARY */}
       <div className="space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Applications by Status</p>
-        <StatusGroup icon="⏳" label="Pending Review" count={apps.filter(a => ['pending','needs_review','created'].includes(a.status)).length} onClickAll={() => setShowList(l => !l)} />
-        <StatusGroup icon="📋" label="Awaiting / Failed" count={apps.filter(a => ['waiting','failed'].includes(a.status)).length} onClickAll={() => setShowList(l => !l)} />
+        <StatusGroup icon="⏳" label="Pending Review" count={pending.length} onClickAll={() => setShowList(l => !l)} />
+        <StatusGroup icon="📋" label="Awaiting / Failed" count={waiting.length} onClickAll={() => setShowList(l => !l)} />
         <StatusGroup icon="🔢" label="All Loaded" count={apps.length} onClickAll={() => setShowList(l => !l)} />
 
         {showList && (
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mt-2">
+          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-semibold text-gray-600">
                 {loading ? 'Loading...' : `${apps.length} applications`}
               </p>
               <button onClick={() => setShowList(false)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
             </div>
-            {loading && (
+            {loading ? (
               <div className="p-4 space-y-2">
                 {Array(4).fill(0).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}
               </div>
-            )}
-            {apps.map(a => (
+            ) : apps.map(a => (
               <button key={a.id} onClick={() => setSelectedId(a.id)}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
                 <div className="flex items-center justify-between">
