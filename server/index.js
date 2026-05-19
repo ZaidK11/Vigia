@@ -81,7 +81,7 @@ app.use('/api/audit', requireAuth, requireRole('LEADERSHIP'), auditRouter);
 app.use('/api/vigia', requireAuth, vigiaApiRouter);
 app.use('/api/search', requireAuth, searchRouter);    // unified search — 4 protocols
 app.use('/api/feedback', requireAuth, feedbackRouter); // verdict feedback loop
-app.use('/api/dashboard', requireAuth, requireRole('SUPPORT_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance leadership dashboard
+app.use('/api/dashboard', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance only
 
 // Serve React static build
 app.use(express.static(path.join(__dirname, 'public')));

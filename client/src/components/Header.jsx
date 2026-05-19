@@ -7,7 +7,7 @@ const TABS = [
   { path: '/fraud',      label: '🔍 Fraud',      icon: '🔍', roles: ['FRAUD_INVESTIGATOR', 'LEADERSHIP'] },
   { path: '/kyc',        label: '🪪 KYC',         icon: '🪪', roles: ['KYC_ANALYST', 'LEADERSHIP'] },
   { path: '/tm',         label: '📡 TM Alerts',  icon: '📡', roles: ['TM_ANALYST', 'LEADERSHIP'] },
-  { path: '/dashboard',  label: '📊 Dashboard',  icon: '📊', roles: ['SUPPORT_ANALYST', 'LEADERSHIP'] },
+  { path: '/dashboard',  label: '📊 Dashboard',  icon: '📊', roles: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'] },
   { path: '/leadership', label: '⚖️ Overview',   icon: '⚖️', roles: ['LEADERSHIP'] },
 ];
 

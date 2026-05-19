@@ -15,8 +15,8 @@ export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 const PORTAL_ROLES = {
-  // Dashboard: Support team + Leadership only (Group Lines team + Laura)
-  dashboard: ['SUPPORT_ANALYST', 'LEADERSHIP'],
+  // Dashboard: Compliance team + Leadership only (not support)
+  dashboard: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'],
   // Support: Support team only
   support: ['SUPPORT_ANALYST'],
   // Fraud / KYC / TM: Compliance team only

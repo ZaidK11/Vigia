@@ -44,7 +44,7 @@ const PORTALS = [
     icon: '📊',
     title: 'Case Queue Dashboard',
     desc: 'All open cases with due dates, urgency sorting, and status filters.',
-    roles: ['SUPPORT_ANALYST', 'LEADERSHIP'],
+    roles: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'],
     color: '#059669',
     bg: '#ECFDF5',
   },
