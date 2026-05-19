@@ -9,11 +9,10 @@ const headers = { 'Accept': 'application/json', 'Content-Type': 'application/jso
 
 async function searchIssues(jql, maxResults = 50) {
   try {
-    const res = await axios.get(`${BASE}/rest/api/3/search`, {
-      auth, headers,
-      params: { jql, maxResults, fields: 'summary,status,assignee,created,updated,priority,description,labels,customfield_10014' },
-      timeout: 15000
-    });
+    const res = await axios.post(`${BASE}/rest/api/3/search/jql`, {
+      jql, maxResults,
+      fields: ['summary', 'status', 'assignee', 'created', 'updated', 'priority', 'description', 'labels', 'customfield_10014']
+    }, { auth, headers, timeout: 15000 });
     return res.data.issues || [];
   } catch (err) {
     console.error('[Jira] Search error:', err.message);

@@ -166,7 +166,7 @@ async function fetchEllipticAlerts() {
   try {
     const ch = require('../lib/clickhouse');
     const rows = await ch.query(`
-      SELECT key, user_id, created_at, current_status
+      SELECT key, summary, created_at, current_status
       FROM analytics_compliance.fact_ar_issues
       WHERE alert_category = 'Sanctions'
         AND is_closed = 0
@@ -179,8 +179,8 @@ async function fetchEllipticAlerts() {
       const created = r.created_at;
       const daysLeft = calcDaysLeft(addDays(created, 1)); // sanctions = 24h SLA
       return {
-        id: r.key || `SANC-${r.user_id}`,
-        title: `⚠️ Sanctions alert — ${r.user_id}`,
+        id: r.key || `SANC-${r.summary?.slice(0,8)}`,
+        title: `⚠️ Sanctions alert — ${r.summary?.slice(0,60) || r.key}`,
         type: 'Escalation',
         assigned: 'Zaid',
         created,
