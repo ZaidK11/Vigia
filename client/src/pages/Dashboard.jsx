@@ -238,7 +238,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <DashStat label="Open Cases" value={stats?.total} color="blue" loading={loading} />
         <DashStat label="Due Today" value={stats?.dueToday} color="orange" loading={loading}
           sub={stats?.dueToday > 0 ? 'Need action now' : undefined} />

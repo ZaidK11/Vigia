@@ -83,6 +83,19 @@
   }
   .btn-warning:hover:not(:disabled) { background: #D97706; }
 
+  /* Teal — VIGÍA brand primary */
+  .btn-teal {
+    @apply btn bg-[#00C9A7] text-white px-5 py-2.5 rounded-xl;
+  }
+  .btn-teal:hover:not(:disabled) { background: #00b396; }
+  .btn-teal:active:not(:disabled) { transform: scale(0.98); }
+
+  /* Amber — request/warn */
+  .btn-amber {
+    @apply btn bg-[#F59E0B] text-white px-6 py-2.5 rounded-xl;
+  }
+  .btn-amber:hover:not(:disabled) { background: #D97706; }
+
   /* Ghost: outline only */
   .btn-outline {
     @apply btn bg-white text-[#666666] px-5 py-2.5 rounded-xl;

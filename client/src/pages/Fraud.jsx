@@ -63,9 +63,9 @@ export default function Fraud() {
   const panels = caseData?.panels;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Left: Queue */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0">
+      <div className="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0 md:overflow-y-auto max-h-64 md:max-h-full">
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-bold text-gray-900 text-base">Fraud Cases</h2>
           <p className="text-xs text-gray-400 mt-0.5">{loading ? 'Loading...' : `${cases.length} open`}</p>

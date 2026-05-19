@@ -129,9 +129,9 @@ export default function Support() {
   const prior = ticketData?.priorTickets || [];
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Left: Queue */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0">
+      <div className="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0 md:overflow-y-auto max-h-64 md:max-h-full">
         <div className="px-4 py-3 border-b border-gray-100">
           <h2 className="font-bold text-gray-900">Support Portal</h2>
           <div className="flex gap-1 mt-2">
