@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Airtm Design System ─────────────────────────────────────────
+   Primary action:   #0066FF (Airtm blue — CTA buttons, links)
+   Teal accent:      #00C9A7 (approve, success, VIGÍA brand)
+   Background:       #FFFFFF / #FAFAFA
+   Border:           #EEEEEE
+   Text dark:        #1A1A1A
+   Text body:        #666666
+   Text light:       #999999
+   Alerts: green #10B981 | amber #F59E0B | red #EF4444
+──────────────────────────────────────────────────────────────── */
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-[#1A1A1A] antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #FAFAFA; }
+  ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+  input, textarea, select { font-family: inherit; }
+}
+
+@layer components {
+
+  /* ── Cards ─────────────────────────────────────────────────── */
+  .card {
+    @apply bg-white border border-[#EEEEEE] rounded-xl p-5;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card-sm {
+    @apply bg-white border border-[#EEEEEE] rounded-xl p-4;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card-hover {
+    @apply bg-white border border-[#EEEEEE] rounded-xl p-4 cursor-pointer transition-all duration-200;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card-hover:hover {
+    background: #FAFAFA;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);
+  }
+
+  /* ── Buttons — Airtm style (pill shape) ─────────────────── */
+  .btn { @apply inline-flex items-center gap-2 font-semibold transition-all duration-200 cursor-pointer; }
+  .btn:disabled { @apply opacity-40 cursor-not-allowed; }
+
+  /* Primary: #0066FF */
+  .btn-primary {
+    @apply btn bg-[#0066FF] text-white px-6 py-3 rounded-3xl;
+  }
+  .btn-primary:hover:not(:disabled) { background: #0052CC; }
+  .btn-primary:active:not(:disabled) { transform: scale(0.98); background: #004499; }
+
+  /* Secondary: outlined #0066FF */
+  .btn-secondary {
+    @apply btn bg-white text-[#0066FF] px-6 py-3 rounded-3xl;
+    border: 2px solid #0066FF;
+  }
+  .btn-secondary:hover:not(:disabled) { background: #F0F7FF; border-color: #0052CC; color: #0052CC; }
+
+  /* Success / approve: #00C9A7 teal */
+  .btn-success {
+    @apply btn bg-[#00C9A7] text-white px-6 py-3 rounded-3xl;
+  }
+  .btn-success:hover:not(:disabled) { background: #00b396; }
+
+  /* Danger: red */
+  .btn-danger {
+    @apply btn bg-[#EF4444] text-white px-6 py-3 rounded-3xl;
+  }
+  .btn-danger:hover:not(:disabled) { background: #DC2626; }
+
+  /* Warning: amber */
+  .btn-warning {
+    @apply btn bg-[#F59E0B] text-white px-6 py-3 rounded-3xl;
+  }
+  .btn-warning:hover:not(:disabled) { background: #D97706; }
+
+  /* Ghost: outline only */
+  .btn-outline {
+    @apply btn bg-white text-[#666666] px-5 py-2.5 rounded-xl;
+    border: 1px solid #D1D5DB;
+  }
+  .btn-outline:hover:not(:disabled) { border-color: #9CA3AF; color: #1A1A1A; }
+
+  /* Small variant */
+  .btn-sm { @apply px-4 py-2 text-sm rounded-lg; }
+  .btn-xs { @apply px-3 py-1.5 text-xs rounded-lg; }
+
+  /* ── Form inputs ─────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-white text-[#1A1A1A] placeholder-[#999999] rounded-lg px-3.5 py-2.5 text-sm outline-none transition-all;
+    border: 1px solid #D1D5DB;
+  }
+  .input:hover { border-color: #9CA3AF; }
+  .input:focus { border: 2px solid #0066FF; box-shadow: 0 0 0 3px rgba(0,102,255,0.1); }
+
+  .select {
+    @apply w-full bg-white text-[#1A1A1A] rounded-lg px-3.5 py-2.5 text-sm outline-none transition-all appearance-none;
+    border: 1px solid #D1D5DB;
+  }
+  .select:focus { border: 2px solid #0066FF; box-shadow: 0 0 0 3px rgba(0,102,255,0.1); }
+
+  .textarea {
+    @apply w-full bg-white text-[#1A1A1A] placeholder-[#999999] rounded-lg px-3.5 py-3 text-sm outline-none resize-none transition-all;
+    border: 1px solid #D1D5DB;
+    line-height: 1.6;
+  }
+  .textarea:focus { border: 2px solid #0066FF; box-shadow: 0 0 0 3px rgba(0,102,255,0.1); }
+
+  /* ── Status badges ───────────────────────────────────────── */
+  .badge { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold; }
+  .badge-active    { @apply badge bg-[#D1FAE5] text-[#065F46]; }
+  .badge-banned    { @apply badge bg-[#FEE2E2] text-[#991B1B]; }
+  .badge-limited   { @apply badge bg-[#FEF3C7] text-[#92400E]; }
+  .badge-pending   { @apply badge bg-[#EFF6FF] text-[#1E40AF]; }
+  .badge-gray      { @apply badge bg-[#F3F4F6] text-[#4B5563]; }
+  .badge-teal      { @apply badge bg-[#CCFBF1] text-[#0D9488]; }
+
+  /* Priority */
+  .priority-high   { @apply badge bg-[#FEE2E2] text-[#991B1B]; }
+  .priority-medium { @apply badge bg-[#FEF3C7] text-[#92400E]; }
+  .priority-low    { @apply badge bg-[#F0FDF4] text-[#166534]; }
+
+  /* ── Alert boxes ─────────────────────────────────────────── */
+  .alert-success { @apply rounded-xl px-4 py-3 text-sm; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; }
+  .alert-warning { @apply rounded-xl px-4 py-3 text-sm; background:#FEF3C7; border:1px solid #FCD34D; color:#92400E; }
+  .alert-danger  { @apply rounded-xl px-4 py-3 text-sm; background:#FEE2E2; border:1px solid #FECACA; color:#991B1B; }
+  .alert-info    { @apply rounded-xl px-4 py-3 text-sm; background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; }
+
+  /* ── VIGÍA analysis box (light blue) ─────────────────────── */
+  .vigia-box {
+    background: #F0F7FF;
+    border-left: 4px solid #0066FF;
+    @apply rounded-xl p-4;
+  }
+
+  /* ── Action buttons (preset) ─────────────────────────────── */
+  .action-btn {
+    @apply w-full flex items-center gap-3 p-4 rounded-xl bg-white transition-all duration-200 text-left cursor-pointer;
+    border: 1px solid #EEEEEE;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .action-btn:hover { background: #FAFAFA; border-color: #0066FF; box-shadow: 0 4px 6px rgba(0,0,0,0.08); }
+  .action-btn-active { background: #F0F7FF; border-color: #0066FF; }
+  .action-btn-icon {
+    @apply w-9 h-9 rounded-xl flex items-center justify-center text-sm flex-shrink-0 bg-[#F3F4F6];
+  }
+
+  /* ── Queue items (sidebar) ───────────────────────────────── */
+  .queue-item {
+    @apply bg-white p-4 rounded-xl cursor-pointer transition-all duration-200;
+    border: 1px solid #EEEEEE;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 8px;
+  }
+  .queue-item:hover { background: #FAFAFA; border-color: #0066FF; box-shadow: 0 4px 6px rgba(0,0,0,0.08); }
+  .queue-item-active { background: #F0F7FF; border-color: #0066FF; }
+
+  /* ── Data rows ───────────────────────────────────────────── */
+  .data-row { @apply flex items-center justify-between py-2; border-bottom: 1px solid #F3F4F6; }
+  .data-row:last-child { border-bottom: none; }
+  .data-label { @apply text-sm; color: #666666; }
+  .data-value { @apply text-sm font-semibold; color: #1A1A1A; }
+
+  /* ── Typography helpers ──────────────────────────────────── */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wider mb-3;
+    color: #999999;
+    letter-spacing: 0.05em;
+  }
+  .page-title { @apply text-xl font-bold; color: #1A1A1A; }
+  .page-subtitle { @apply text-sm mt-0.5; color: #666666; }
+
+  /* ── Stat card (Leadership) ──────────────────────────────── */
+  .stat-card {
+    @apply bg-white rounded-xl p-5;
+    border: 1px solid #EEEEEE;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  /* ── Chat bubbles ────────────────────────────────────────── */
+  .chat-user  { @apply bg-[#0066FF] text-white rounded-2xl rounded-tr-sm px-4 py-3 text-sm max-w-[80%] self-end; }
+  .chat-vigia { @apply bg-white rounded-2xl rounded-tl-sm px-4 py-3 text-sm max-w-[85%] self-start; border:1px solid #EEEEEE; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+
+  /* ── Narrative editor sections ───────────────────────────── */
+  .narrative-section { @apply bg-white rounded-xl overflow-hidden; border:1px solid #EEEEEE; }
+  .narrative-header  { @apply bg-[#FAFAFA] px-4 py-3 flex items-center justify-between; border-bottom:1px solid #EEEEEE; }
+  .narrative-body    { @apply p-4; }
+}
+
+@layer utilities {
+  .text-blue { color: #0066FF; }
+  .text-teal { color: #00C9A7; }
+  .text-body { color: #666666; }
+  .bg-blue   { background-color: #0066FF; }
+}
+
+/* Loading skeleton */
+@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+.skeleton {
+  background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+/* VIGÍA streaming cursor */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.cursor-blink {
+  display: inline-block; width: 2px; height: 14px;
+  background: #0066FF; margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 1s infinite;
+}
+
+/* Transitions */
+* { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: 200ms; transition-timing-function: ease-in-out; }

@@ -1,0 +1,201 @@
+// ============================================================
+// VIGÍA BSA DECISION ENGINE — BUILD HEADER
+// ============================================================
+// Tool Name:        VIGÍA Portal — Claude API Integration
+// Build Date:       2026-05-14
+// Authorized by:    Zaid Khan (U087TL6CGNM)
+// POLICY COMPLIANCE: POL-BSA-001-v4.2
+// EWRA RISK MITIGATION: Risk ID(s): EWRA-01, EWRA-20 | Residual: LOW
+// ============================================================
+
+const express = require('express');
+const router = express.Router();
+const Anthropic = require('@anthropic-ai/sdk');
+const { logAction } = require('../lib/audit');
+
+// Explicitly set apiKey so SDK never tries to read env or incoming headers
+const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
+if (!CLAUDE_API_KEY) {
+  console.error('[VIGÍA API] CLAUDE_API_KEY not set!');
+}
+const client = new Anthropic({ apiKey: CLAUDE_API_KEY });
+const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
+
+// VIGÍA system prompt — compliance engine identity
+const SYSTEM_PROMPT = `You are VIGÍA — the Compliance Kinetic Extension (CKE) for Airtm, a licensed fintech operating as a US MSB (FinCEN), Argentina VASP (UIF/CNV), and pending India FIU-IND registrant.
+
+You are the analytical engine embedded in the VIGÍA Compliance Portal. Analysts submit compliance cases directly to you. You analyze and respond.
+
+## Your operating standards:
+
+**Output format — always follow this structure:**
+1. **Status** — one-line verdict (CLEAN / MEDIUM RISK / HIGH RISK / CRITICAL)
+2. **What happened** — plain language summary of the case (2-3 sentences max)
+3. **Key findings** — bullet list of red flags and green flags
+4. **Recommendation** — single clear action (APPROVE / REJECT / ESCALATE / MONITOR / FILE SAR / REQUEST DOCS)
+5. **Next step** — one sentence, one owner, one action
+
+**Rules:**
+- No table names, no SQL, no technical connector details in your response
+- Translate everything to plain language a senior compliance analyst would write
+- Every response must be defensible under BSA, FinCEN, OFAC, and UIF requirements
+- If a sanctions match exists → hard stop, escalate immediately
+- 3-hour investigation clock applies to all TM alerts — always note clock status
+- EWRA-20 (TM) is always HIGH residual until PRO-TM-003 closes (Q3 2026)
+
+**Policy hierarchy:** POL-BSA-001-v4.2 governs. Level 2 beats Level 4 always.
+
+**The Four Ground Truths:**
+1. Every TM alert must move within 3 hours — Limited, Monitoring, or closure
+2. Airtm does NOT run transaction-time OFAC screening (compensating controls in place)
+3. CDD cadence: High=12mo, Medium=18mo, Low=24mo (POL-BSA-001 governs, not PRO-KYC-001)
+4. Hard Split: Individual (KYC/##A) and Business (KYB/##B) are never merged
+
+Be decisive. Be concise. Be defensible.`;
+
+// POST /api/vigia/analyze
+router.post('/analyze', async (req, res) => {
+  const { command, portalType, resourceId, context } = req.body;
+
+  if (!command) {
+    return res.status(400).json({ error: 'command is required' });
+  }
+
+  const startTime = Date.now();
+
+  try {
+    // Stream the response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const stream = await client.messages.stream({
+      model: MODEL,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: command }]
+    });
+
+    let fullResponse = '';
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        const text = chunk.delta.text;
+        fullResponse += text;
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      }
+    }
+
+    const elapsed = Date.now() - startTime;
+
+    // Log to audit trail
+    logAction({
+      userEmail: req.user?.email || 'unknown',
+      action: `VIGIA_ANALYZE_${(portalType || 'UNKNOWN').toUpperCase()}`,
+      resourceId: resourceId || null,
+      details: {
+        commandLength: command.length,
+        responseLength: fullResponse.length,
+        elapsedMs: elapsed,
+        model: MODEL
+      }
+    });
+
+    res.write(`data: ${JSON.stringify({ done: true, elapsed })}\n\n`);
+    res.end();
+
+  } catch (err) {
+    console.error('[VIGÍA API] Error:', err.message);
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'VIGÍA analysis failed', details: err.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+// POST /api/vigia/analyze-sync (non-streaming, for simpler clients)
+router.post('/analyze-sync', async (req, res) => {
+  const { command, portalType, resourceId } = req.body;
+
+  if (!command) return res.status(400).json({ error: 'command is required' });
+
+  try {
+    const message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: command }]
+    });
+
+    const response = message.content[0]?.text || '';
+
+    logAction({
+      userEmail: req.user?.email || 'unknown',
+      action: `VIGIA_ANALYZE_SYNC_${(portalType || 'UNKNOWN').toUpperCase()}`,
+      resourceId: resourceId || null,
+      details: { responseLength: response.length, model: MODEL }
+    });
+
+    res.json({ response, model: MODEL, usage: message.usage });
+
+  } catch (err) {
+    console.error('[VIGÍA API] Sync error:', err.message);
+    res.status(500).json({ error: 'VIGÍA analysis failed', details: err.message });
+  }
+});
+
+// POST /api/vigia/chat — Leadership open chat with conversation history
+router.post('/chat', async (req, res) => {
+  if (req.user?.role !== 'LEADERSHIP') {
+    return res.status(403).json({ error: 'Leadership only' });
+  }
+  const { messages } = req.body;
+  if (!messages?.length) return res.status(400).json({ error: 'messages required' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  try {
+    const stream = await client.messages.stream({
+      model: MODEL,
+      max_tokens: 2048,
+      system: SYSTEM_PROMPT,
+      messages: messages
+        .filter(m => m.role && m.content)
+        .map(m => ({ role: m.role, content: m.content }))
+    });
+
+    let fullText = '';
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        fullText += chunk.delta.text;
+        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    logAction({
+      userEmail: req.user.email,
+      action: 'LEADERSHIP_CHAT',
+      details: { messageCount: messages.length, responseLength: fullText.length, model: MODEL }
+    });
+
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+  } catch (err) {
+    console.error('[VIGÍA Chat]', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+module.exports = router;

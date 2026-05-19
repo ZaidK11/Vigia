@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.airtm.vigia</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/opt/node@22/bin/node</string>
+        <string>/Users/clawbot/.openclaw-state-vigia/workspace/vigia-portal/server/index.js</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/clawbot/.openclaw-state-vigia/workspace/vigia-portal/server</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/clawbot/.openclaw-state-vigia/workspace/vigia-portal/server/vigia.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/clawbot/.openclaw-state-vigia/workspace/vigia-portal/server/vigia-error.log</string>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+</dict>
+</plist>

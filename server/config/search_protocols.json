@@ -1,0 +1,448 @@
+{
+  "version": "1.0",
+  "lastUpdated": "2026-05-16",
+  "owner": "zaid",
+  "description": "Unified search protocols for all portals. Each search type has input, analysis flow, verdict options, and feedback capture.",
+  "searchProtocols": {
+    "support_user_search": {
+      "id": "support_user_search",
+      "role": "SUPPORT_ANALYST",
+      "name": "Find User & Determine Escalation Path",
+      "description": "Search by email or UUID. Returns account status + risk flags. Support agent decides: help / escalate to fraud / escalate to KYC.",
+      "inputType": ["email", "uuid"],
+      "placeholder": "Enter user email or UUID",
+      "dataPoints": [
+        "user_id",
+        "email",
+        "created_at",
+        "country_code",
+        "account_status",
+        "kyc_level",
+        "risk_level",
+        "flagged"
+      ],
+      "hiddenFromSupport": [
+        "device_fingerprint",
+        "ip_address",
+        "fraud_flags",
+        "risk_score"
+      ],
+      "analysisFlow": [
+        {
+          "step": 1,
+          "name": "Fetch Account",
+          "source": "oauth2_onix_users",
+          "fields": ["id", "email", "created_at", "country_code", "account_status"]
+        },
+        {
+          "step": 2,
+          "name": "Check KYC Status",
+          "source": "stg_dodrio_persona_inquiries",
+          "fields": ["status", "kyc_level"]
+        },
+        {
+          "step": 3,
+          "name": "Get Risk Level (sanitized)",
+          "source": "security_hub_dodrio_risk_level",
+          "fields": ["risk_level"],
+          "note": "Support sees ONLY risk_level (LOW/MEDIUM/HIGH), not raw score or flags"
+        }
+      ],
+      "verdictOptions": [
+        {
+          "verdict": "SAFE_TO_HELP",
+          "label": "✅ Safe to Help",
+          "description": "Account is clean. Help with ticket.",
+          "conditions": "risk_level = LOW AND kyc_level >= 1",
+          "actions": ["respond_to_ticket", "resolve_ticket"]
+        },
+        {
+          "verdict": "ESCALATE_FRAUD",
+          "label": "⚠️ Escalate to Fraud",
+          "description": "Risk flags present. Send to fraud team.",
+          "conditions": "risk_level = HIGH",
+          "actions": ["create_fraud_case", "hold_ticket"]
+        },
+        {
+          "verdict": "ESCALATE_KYC",
+          "label": "⏳ Escalate to KYC",
+          "description": "Account not fully verified. KYC team needs to review.",
+          "conditions": "kyc_level < 1 OR kyc_status = PENDING",
+          "actions": ["create_kyc_case", "hold_ticket"]
+        },
+        {
+          "verdict": "NEEDS_INFO",
+          "label": "❓ Request More Info",
+          "description": "Missing data. Ask customer for clarification.",
+          "conditions": "None — agent's discretion",
+          "actions": ["send_message_to_customer", "hold_ticket"]
+        }
+      ],
+      "feedbackCapture": {
+        "enabled": true,
+        "method": "thumbs_up_down",
+        "thumbsUp": "Agent agrees with verdict. Log as training data.",
+        "thumbsDown": "Agent disagrees. Capture what agent chose instead + why (optional note).",
+        "logEndpoint": "/api/feedback/search-verdict",
+        "fields": ["search_id", "user_id", "verdict_given", "verdict_chosen", "agent_note", "outcome"]
+      }
+    },
+    "fraud_user_search": {
+      "id": "fraud_user_search",
+      "role": "FRAUD_INVESTIGATOR",
+      "name": "Investigate User for Fraud Risk",
+      "description": "Search by email or UUID. Returns transaction patterns, network analysis, Elliptic risk. Fraud agent decides: approve / escalate / block.",
+      "inputType": ["email", "uuid"],
+      "placeholder": "Enter user email or UUID to investigate",
+      "dataPoints": [
+        "user_id",
+        "email",
+        "created_at",
+        "account_status",
+        "tx_count_24h",
+        "tx_count_7d",
+        "tx_count_90d",
+        "total_volume_90d",
+        "max_single_tx",
+        "destination_countries",
+        "network_shared_users",
+        "elliptic_risk_score",
+        "elliptic_risk_flags",
+        "recommendation"
+      ],
+      "analysisFlow": [
+        {
+          "step": 1,
+          "name": "Fetch Account",
+          "source": "oauth2_onix_users",
+          "fields": ["id", "email", "created_at", "account_status"]
+        },
+        {
+          "step": 2,
+          "name": "Get Transaction Pattern",
+          "source": "payments_kecleon_operations",
+          "query": "Last 90 days: count, volume, max tx, 24h/7d counts, destination countries",
+          "fields": ["tx_count", "total_volume", "max_single_tx", "destination_countries"]
+        },
+        {
+          "step": 3,
+          "name": "Network Analysis",
+          "source": "oauth2_onix_users",
+          "query": "Accounts sharing IP or device fingerprint with this user",
+          "fields": ["ip_address", "device_fingerprint", "shared_users"]
+        },
+        {
+          "step": 4,
+          "name": "Get Elliptic Risk",
+          "source": "operations_silvally_elliptic",
+          "fields": ["risk_score", "risk_flags", "screened_at"]
+        },
+        {
+          "step": 5,
+          "name": "Generate Recommendation",
+          "logic": "IF elliptic_score > 70 OR tx_count_24h > 20 THEN BLOCK; ELSE IF elliptic_score > 40 OR tx_count_24h > 10 OR max_tx > 10000 THEN ESCALATE; ELSE APPROVE"
+        }
+      ],
+      "verdictOptions": [
+        {
+          "verdict": "APPROVE",
+          "label": "✅ Approve",
+          "description": "No fraud indicators. Clear user.",
+          "conditions": "Elliptic < 40 AND tx_24h < 10 AND max_tx < $10K",
+          "actions": ["clear_user", "log_decision"]
+        },
+        {
+          "verdict": "ESCALATE",
+          "label": "⚠️ Escalate",
+          "description": "Medium risk. Needs review by senior fraud analyst.",
+          "conditions": "Elliptic 40-70 OR tx_24h 10-20 OR max_tx $10K-$100K OR shared_network",
+          "actions": ["create_escalation_case", "assign_to_senior"]
+        },
+        {
+          "verdict": "BLOCK",
+          "label": "🚫 Block",
+          "description": "High fraud risk. Block immediately.",
+          "conditions": "Elliptic > 70 OR tx_24h > 20 OR suspicious_network_activity",
+          "actions": ["block_user", "log_decision", "alert_zaid"]
+        }
+      ],
+      "feedbackCapture": {
+        "enabled": true,
+        "method": "thumbs_up_down",
+        "thumbsUp": "Fraud agent agrees with Vigya's recommendation.",
+        "thumbsDown": "Fraud agent overrides. Log actual decision + agent's reasoning.",
+        "logEndpoint": "/api/feedback/fraud-verdict",
+        "fields": ["search_id", "user_id", "verdict_given", "verdict_chosen", "agent_note", "network_info", "outcome"]
+      }
+    },
+    "kyc_user_search": {
+      "id": "kyc_user_search",
+      "role": "KYC_ANALYST",
+      "name": "Review User KYC Application",
+      "description": "Search by email or UUID. Returns Persona inquiry data, country risk, document status. KYC agent decides: approve / reject (with template) / EDD required.",
+      "inputType": ["email", "uuid"],
+      "placeholder": "Enter user email or UUID for KYC review",
+      "dataPoints": [
+        "user_id",
+        "email",
+        "inquiry_id",
+        "kyc_status",
+        "name",
+        "dob",
+        "country",
+        "isRestrictedCountry",
+        "documents",
+        "document_status",
+        "risk_level",
+        "created_at",
+        "updated_at"
+      ],
+      "analysisFlow": [
+        {
+          "step": 1,
+          "name": "Fetch Account",
+          "source": "oauth2_onix_users",
+          "fields": ["id", "email", "created_at"]
+        },
+        {
+          "step": 2,
+          "name": "Get Persona Inquiry",
+          "source": "stg_dodrio_persona_inquiries + Persona API",
+          "fields": ["inquiry_id", "status", "name_first", "name_last", "dob", "country_code", "documents"]
+        },
+        {
+          "step": 3,
+          "name": "Check Restricted Countries",
+          "logic": "Cross-reference country against [CU, IR, KP, MM, SY] list. Flag if match.",
+          "fields": ["isRestrictedCountry"]
+        },
+        {
+          "step": 4,
+          "name": "Get Risk Level",
+          "source": "security_hub_dodrio_risk_level",
+          "fields": ["risk_level"]
+        }
+      ],
+      "verdictOptions": [
+        {
+          "verdict": "APPROVE",
+          "label": "✅ Approve",
+          "template": "APPROVE",
+          "message": "Identity verified successfully. Documents meet KYC requirements per POL-BSA-001-v4.2 §3.1.",
+          "conditions": "All documents valid, country not restricted, risk_level not HIGH",
+          "actions": ["approve_kyc", "enable_trading", "log_decision"]
+        },
+        {
+          "verdict": "REJECT_EXPIRED",
+          "label": "❌ Reject — Document Expired",
+          "template": "REJECT_EXPIRED",
+          "message": "Document has expired. Please re-submit a valid, unexpired government-issued ID.",
+          "conditions": "Document expiration detected",
+          "actions": ["reject_kyc", "send_template_message", "log_decision"]
+        },
+        {
+          "verdict": "REJECT_MISMATCH",
+          "label": "❌ Reject — Data Mismatch",
+          "template": "REJECT_MISMATCH",
+          "message": "Name or DOB on document does not match submitted information. Please re-submit matching documents.",
+          "conditions": "Name/DOB mismatch detected",
+          "actions": ["reject_kyc", "send_template_message", "log_decision"]
+        },
+        {
+          "verdict": "REJECT_QUALITY",
+          "label": "❌ Reject — Poor Image Quality",
+          "template": "REJECT_QUALITY",
+          "message": "Document image is not legible. Please re-submit a clear, unobstructed photo of your ID.",
+          "conditions": "Image quality flag from Persona API",
+          "actions": ["reject_kyc", "send_template_message", "log_decision"]
+        },
+        {
+          "verdict": "REJECT_RESTRICTED",
+          "label": "❌ Reject — Restricted Jurisdiction",
+          "template": "REJECT_RESTRICTED",
+          "message": "Account cannot be opened for applicants from restricted jurisdictions per POL-BSA-001-v4.2 §6.2.",
+          "conditions": "isRestrictedCountry = true",
+          "actions": ["reject_kyc", "send_template_message", "log_decision"]
+        },
+        {
+          "verdict": "EDD_REQUIRED",
+          "label": "⏳ EDD Required",
+          "template": "EDD_REQUIRED",
+          "message": "Enhanced Due Diligence required based on risk profile. Pending additional documentation.",
+          "conditions": "risk_level = HIGH OR country_risk = MEDIUM",
+          "actions": ["request_edd", "create_edd_case", "notify_customer", "log_decision"]
+        }
+      ],
+      "feedbackCapture": {
+        "enabled": true,
+        "method": "thumbs_up_down",
+        "thumbsUp": "KYC analyst agrees with Vigya's recommendation.",
+        "thumbsDown": "KYC analyst overrides. Log actual decision + agent's reasoning.",
+        "logEndpoint": "/api/feedback/kyc-verdict",
+        "fields": ["search_id", "user_id", "inquiry_id", "verdict_given", "verdict_chosen", "agent_note", "outcome"]
+      }
+    },
+    "tm_user_search": {
+      "id": "tm_user_search",
+      "role": "TM_ANALYST",
+      "name": "Investigate Transaction Alert",
+      "description": "Search by email or UUID. Returns transaction patterns, Elliptic/Kount risk, SAR recommendation. TM agent decides: approve / escalate / file SAR.",
+      "inputType": ["email", "uuid"],
+      "placeholder": "Enter user email or UUID for alert investigation",
+      "dataPoints": [
+        "user_id",
+        "email",
+        "tx_count_24h",
+        "tx_count_7d",
+        "tx_count_30d",
+        "tx_count_90d",
+        "total_volume_90d",
+        "max_single_tx",
+        "min_single_tx",
+        "destination_countries",
+        "currencies_used",
+        "network_shared_users",
+        "elliptic_risk_score",
+        "elliptic_risk_flags",
+        "kount_risk_score",
+        "sar_required",
+        "sar_threshold",
+        "sar_deadline"
+      ],
+      "analysisFlow": [
+        {
+          "step": 1,
+          "name": "Fetch Account",
+          "source": "oauth2_onix_users",
+          "fields": ["id", "email", "created_at"]
+        },
+        {
+          "step": 2,
+          "name": "Get Transaction Pattern",
+          "source": "payments_kecleon_operations",
+          "query": "Last 90 days: count (24h/7d/30d), volume, max/min tx, destination countries, currencies",
+          "fields": ["tx_count", "total_volume", "destination_countries", "currencies_used"]
+        },
+        {
+          "step": 3,
+          "name": "Network Analysis",
+          "source": "oauth2_onix_users",
+          "query": "Accounts sharing IP or device with this user",
+          "fields": ["shared_users"]
+        },
+        {
+          "step": 4,
+          "name": "Get Elliptic Risk",
+          "source": "operations_silvally_elliptic",
+          "fields": ["risk_score", "risk_flags"]
+        },
+        {
+          "step": 5,
+          "name": "Get Kount Risk",
+          "source": "operations_silvally_kount",
+          "fields": ["risk_score"]
+        },
+        {
+          "step": 6,
+          "name": "Calculate SAR Requirement",
+          "logic": "IF elliptic_score > 60 OR total_volume > $10K OR tx_count > 50 THEN sar_required = true; deadline = 30 days",
+          "ewra": "⚠️ EWRA-20: HIGH Residual Risk — PRO-TM-003 open until Q3 2026"
+        }
+      ],
+      "verdictOptions": [
+        {
+          "verdict": "APPROVE",
+          "label": "✅ Approve",
+          "description": "Low risk. No SAR required.",
+          "conditions": "Elliptic < 40 AND volume < $5K AND tx_count < 20",
+          "actions": ["approve_alert", "close_alert", "log_decision"]
+        },
+        {
+          "verdict": "ESCALATE",
+          "label": "⚠️ Escalate",
+          "description": "Medium risk. Needs senior review. SAR decision pending.",
+          "conditions": "Elliptic 40-60 OR volume $5K-$10K OR tx_count 20-50",
+          "actions": ["escalate_alert", "assign_to_senior"]
+        },
+        {
+          "verdict": "FILE_SAR",
+          "label": "📋 File SAR",
+          "description": "High risk. Suspicious activity meets SAR threshold. File Suspicious Activity Report.",
+          "conditions": "Elliptic > 60 OR volume > $10K OR tx_count > 50 OR unusual_pattern",
+          "actions": ["generate_sar_template", "file_sar", "alert_bsa_officer", "log_decision"]
+        }
+      ],
+      "sarTemplate": {
+        "enabled": true,
+        "fields": [
+          "pattern_description",
+          "context_summary",
+          "timeline",
+          "conclusion",
+          "analyst_name",
+          "filing_date"
+        ],
+        "deadline": "30 days from detection (BSA §1023.320)",
+        "requiresApproval": "BSA Officer (Zaid Khan)"
+      },
+      "feedbackCapture": {
+        "enabled": true,
+        "method": "thumbs_up_down",
+        "thumbsUp": "TM analyst agrees with SAR recommendation.",
+        "thumbsDown": "TM analyst disagrees. Log actual decision + reasoning.",
+        "logEndpoint": "/api/feedback/tm-verdict",
+        "fields": ["search_id", "user_id", "verdict_given", "verdict_chosen", "agent_note", "sar_filed", "outcome"]
+      }
+    }
+  },
+  "feedbackLearning": {
+    "enabled": true,
+    "endpoint": "/api/feedback/log-verdict",
+    "structure": {
+      "search_type": "support_user_search | fraud_user_search | kyc_user_search | tm_user_search",
+      "user_id": "uuid",
+      "verdict_given": "Vigya's recommendation",
+      "verdict_chosen": "What agent actually selected",
+      "agreement": "thumbs_up | thumbs_down",
+      "agent_note": "Optional explanation from agent",
+      "outcome": "Only logged after case closes (from Freshdesk/Jira)",
+      "timestamp": "ISO timestamp"
+    },
+    "learningCycle": [
+      "Agent searches user → Vigya returns verdict",
+      "Agent presses 👍 or 👎",
+      "Log entry created (searchType, user, vigyaVerdict, agentChoice, agreement)",
+      "Case closes in Freshdesk/Jira → outcome auto-logged",
+      "Weekly: Vigya analyzes feedback → updates verdict confidence scores",
+      "Monthly: Report on which verdicts had highest agent agreement + best outcomes"
+    ]
+  },
+  "portalCustomization": {
+    "note": "Each portal sees only its own search type. Buttons, prompts, and messages are role-specific.",
+    "support": {
+      "searchType": "support_user_search",
+      "buttonLabel": "🔍 Find User",
+      "visibleVerdicts": ["SAFE_TO_HELP", "ESCALATE_FRAUD", "ESCALATE_KYC", "NEEDS_INFO"],
+      "feedbackEnabled": true
+    },
+    "fraud": {
+      "searchType": "fraud_user_search",
+      "buttonLabel": "🔍 Investigate User",
+      "visibleVerdicts": ["APPROVE", "ESCALATE", "BLOCK"],
+      "feedbackEnabled": true
+    },
+    "kyc": {
+      "searchType": "kyc_user_search",
+      "buttonLabel": "🔍 Review KYC",
+      "visibleVerdicts": ["APPROVE", "REJECT_EXPIRED", "REJECT_MISMATCH", "REJECT_QUALITY", "REJECT_RESTRICTED", "EDD_REQUIRED"],
+      "feedbackEnabled": true
+    },
+    "tm": {
+      "searchType": "tm_user_search",
+      "buttonLabel": "🔍 Investigate Alert",
+      "visibleVerdicts": ["APPROVE", "ESCALATE", "FILE_SAR"],
+      "sarTemplateEnabled": true,
+      "feedbackEnabled": true
+    }
+  }
+}
