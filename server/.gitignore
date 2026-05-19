@@ -2,4 +2,3 @@ node_modules/
 .env
 *.log
 audit.db
-public/assets/
