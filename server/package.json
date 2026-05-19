@@ -1,7 +1,7 @@
 {
   "name": "vigia-portal-server",
   "version": "1.0.0",
-  "description": "VIGÍA Compliance Portal — Express Backend",
+  "description": "VIG\u00cdA Compliance Portal \u2014 Express Backend",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -20,5 +20,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
