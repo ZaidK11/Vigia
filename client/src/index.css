@@ -107,6 +107,19 @@
   .btn-sm { @apply px-4 py-2 text-sm rounded-lg; }
   .btn-xs { @apply px-3 py-1.5 text-xs rounded-lg; }
 
+  /* ── Global: all inputs must have dark visible text (fixes white-on-white) ── */
+  input[type="text"],
+  input[type="email"],
+  input[type="search"],
+  input[type="password"],
+  input:not([type]) {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+  }
+  input::placeholder { color: #9CA3AF !important; opacity: 1 !important; }
+  textarea { color: #111827 !important; }
+  textarea::placeholder { color: #9CA3AF !important; opacity: 1 !important; }
+
   /* ── Form inputs ─────────────────────────────────────────── */
   .input {
     @apply w-full bg-white text-[#1A1A1A] placeholder-[#999999] rounded-lg px-3.5 py-2.5 text-sm outline-none transition-all;

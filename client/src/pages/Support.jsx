@@ -37,8 +37,10 @@ function TicketDetail({ ticketId, onClose }) {
   const [replyText, setReplyText] = useState('');
   const [replySending, setReplySending] = useState(false);
   const [replySent, setReplySent] = useState(false);
-  const [escalating, setEscalating] = useState(false);
-  const [escalated, setEscalated] = useState(false);
+  const [escalateFlagged, setEscalateFlagged] = useState(false); // local flag only
+  const [escalateConfirming, setEscalateConfirming] = useState(false); // show confirm dialog
+  const [escalating, setEscalating] = useState(false); // actual API call in progress
+  const [escalated, setEscalated] = useState(false); // API call done
   const [vigiaUsed, setVigiaUsed] = useState(false);
 
   useEffect(() => {
@@ -46,6 +48,8 @@ function TicketDetail({ ticketId, onClose }) {
     setData(null);
     setReplyText('');
     setReplySent(false);
+    setEscalateFlagged(false);
+    setEscalateConfirming(false);
     setEscalated(false);
     setVigiaUsed(false);
     fetch(`/api/support/ticket/${ticketId}`, { headers: authHdr() })
@@ -75,7 +79,15 @@ function TicketDetail({ ticketId, onClose }) {
     setReplySending(false);
   };
 
-  const escalate = async () => {
+  // Step 1: flag locally (no API call yet)
+  const flagForEscalation = () => {
+    setEscalateFlagged(true);
+    setEscalateConfirming(true);
+  };
+
+  // Step 2: confirmed — actually call Freshdesk
+  const confirmEscalate = async () => {
+    setEscalateConfirming(false);
     setEscalating(true);
     try {
       await fetch(`/api/support/ticket/${ticketId}/escalate`, {
@@ -85,6 +97,11 @@ function TicketDetail({ ticketId, onClose }) {
       setEscalated(true);
     } catch {}
     setEscalating(false);
+  };
+
+  const cancelEscalate = () => {
+    setEscalateFlagged(false);
+    setEscalateConfirming(false);
   };
 
   if (loading) return (
@@ -121,13 +138,13 @@ function TicketDetail({ ticketId, onClose }) {
         </div>
       </div>
 
-      {/* 1. Ticket Summary */}
-      {summary && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-4">
-          <p className="text-xs font-semibold text-blue-700 mb-1.5">What's the issue?</p>
-          <p className="text-sm text-gray-800 leading-relaxed">{summary}</p>
-        </div>
-      )}
+      {/* 1. What's the issue */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4">
+        <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">What is the customer asking?</p>
+        <p className="text-sm text-gray-900 leading-relaxed font-medium">
+          {summary || ticket.description_text?.replace(/<[^>]+>/g, '').trim().slice(0, 300) || ticket.subject || 'No description provided.'}
+        </p>
+      </div>
 
       {/* 2. Prior History */}
       {prior.length > 0 && (
@@ -215,11 +232,27 @@ function TicketDetail({ ticketId, onClose }) {
           </div>
 
           {/* Quick action button */}
-          {risk.verdict === 'ESCALATE' && !escalated && (
-            <button onClick={escalate} disabled={escalating}
-              className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-all disabled:opacity-60">
-              {escalating ? 'Escalating...' : '🚨 Escalate to Compliance Team'}
+          {risk.verdict === 'ESCALATE' && !escalated && !escalateFlagged && (
+            <button onClick={flagForEscalation}
+              className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-all">
+              🚨 Flag for Escalation
             </button>
+          )}
+          {escalateFlagged && !escalated && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-center">
+              <p className="text-xs font-semibold text-red-700 mb-2">⚠️ Flagged for escalation</p>
+              <p className="text-xs text-red-600 mb-3">This will notify Zaid and set the ticket to Urgent in Freshdesk.</p>
+              <div className="flex gap-2">
+                <button onClick={cancelEscalate}
+                  className="flex-1 py-1.5 text-xs font-medium rounded-lg border border-red-300 text-red-600 hover:bg-red-100">
+                  Cancel
+                </button>
+                <button onClick={confirmEscalate} disabled={escalating}
+                  className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-60">
+                  {escalating ? 'Escalating...' : 'Confirm Escalation'}
+                </button>
+              </div>
+            </div>
           )}
           {risk.verdict === 'VERIFY' && (
             <div className="text-xs text-amber-700 bg-amber-100 rounded-lg p-2 text-center font-medium">
@@ -234,25 +267,21 @@ function TicketDetail({ ticketId, onClose }) {
         </div>
       )}
 
-      {/* Conversation */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">Conversation</p>
-        <div className="space-y-3 max-h-44 overflow-y-auto">
-          {conv.length === 0 && (
-            <p className="text-sm text-gray-500">{ticket.description_text?.replace(/<[^>]+>/g, '').slice(0, 400) || 'No messages'}</p>
-          )}
-          {conv.map(c => (
-            <div key={c.id} className={c.author_type === 'agent' ? 'pl-3 border-l-2 border-blue-300' : ''}>
-              <p className="text-[10px] font-semibold text-gray-400 mb-0.5">
-                {c.author_type === 'customer' ? (ticket.requester?.name || 'Customer') : 'Agent'} · {timeAgo(c.created_at)}
-              </p>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {c.body_text?.replace(/<[^>]+>/g, '').slice(0, 400)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Customer's original message */}
+      {(() => {
+        const firstCustomerMsg = conv.find(c => c.author_type === 'customer');
+        const msgText = firstCustomerMsg?.body_text?.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim()
+          || ticket.description_text?.replace(/<[^>]+>/g, '').trim();
+        if (!msgText) return null;
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">
+              Customer's message · {timeAgo(firstCustomerMsg?.created_at || ticket.created_at)}
+            </p>
+            <p className="text-sm text-gray-700 leading-relaxed">{msgText.slice(0, 600)}</p>
+          </div>
+        );
+      })()}
 
       {/* 5. Suggested Reply — last */}
       {!replySent && !escalated && (
@@ -296,11 +325,13 @@ function TicketDetail({ ticketId, onClose }) {
               Send (keep open)
             </button>
             <button
-              onClick={escalate}
-              disabled={escalating}
-              title="Flag this ticket for compliance team review — tags it as compliance-escalated, sets priority to Urgent, and notifies Zaid"
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-all">
-              {escalating ? '...' : '🚨 Escalate'}
+              onClick={escalateFlagged ? confirmEscalate : flagForEscalation}
+              disabled={escalating || escalated}
+              title="Flag this ticket for compliance team review — you will be asked to confirm before anything is sent to Freshdesk"
+              className={`px-4 py-2 text-sm font-medium rounded-lg border transition-all disabled:opacity-60 ${
+                escalateFlagged ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+              }`}>
+              {escalating ? '...' : escalateFlagged ? '✓ Flagged — Confirm?' : '🚨 Flag for Escalation'}
             </button>
           </div>
           <div className="mt-2 flex gap-4">
