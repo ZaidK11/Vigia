@@ -244,8 +244,18 @@ Generate a professional, empathetic support response (under 120 words):
 Also note: is escalation to compliance needed? (YES/NO and why)`;
 }
 
+// ── Role enforcement for ticket-specific routes ────────────────
+const SUPPORT_ROLES = ['SUPPORT_ANALYST'];
+function requireSupport(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!SUPPORT_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Support portal access required' });
+  }
+  next();
+}
+
 // ── GET /api/support/tickets — open Freshdesk queue ─────────────
-router.get('/tickets', async (req, res) => {
+router.get('/tickets', requireSupport, async (req, res) => {
   const tickets = await fdGet('/tickets', {
     order_by: 'created_at',
     order_type: 'desc',
@@ -285,7 +295,7 @@ router.get('/tickets', async (req, res) => {
 });
 
 // ── GET /api/support/ticket/:id — full detail + analysis ────────
-router.get('/ticket/:id', async (req, res) => {
+router.get('/ticket/:id', requireSupport, async (req, res) => {
   const { id } = req.params;
 
   const [ticket, convRaw] = await Promise.all([
@@ -351,7 +361,7 @@ router.get('/ticket/:id', async (req, res) => {
 });
 
 // ── POST /api/support/ticket/:id/reply — send reply + close ────
-router.post('/ticket/:id/reply', async (req, res) => {
+router.post('/ticket/:id/reply', requireSupport, async (req, res) => {
   const { id } = req.params;
   const { body, close = true, usedVigiaFlag = false } = req.body;
 
@@ -377,7 +387,7 @@ router.post('/ticket/:id/reply', async (req, res) => {
 });
 
 // ── POST /api/support/ticket/:id/escalate — escalate to compliance
-router.post('/ticket/:id/escalate', async (req, res) => {
+router.post('/ticket/:id/escalate', requireSupport, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
 

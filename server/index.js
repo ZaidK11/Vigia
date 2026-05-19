@@ -72,15 +72,16 @@ function requireRole(...roles) {
 // Routes
 app.use('/auth', ssoRouter);  // Google SSO
 app.use('/api/auth', authRouter);  // Token auth (fallback)
+// Support ticket endpoints — Support only; /search is shared across roles
 app.use('/api/support', requireAuth, supportRouter);
-app.use('/api/fraud', requireAuth, fraudRouter);
-app.use('/api/kyc', requireAuth, kycRouter);
-app.use('/api/tm', requireAuth, tmRouter);
-app.use('/api/audit', requireAuth, auditRouter);
+app.use('/api/fraud', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'LEADERSHIP'), fraudRouter);
+app.use('/api/kyc', requireAuth, requireRole('KYC_ANALYST', 'LEADERSHIP'), kycRouter);
+app.use('/api/tm', requireAuth, requireRole('TM_ANALYST', 'LEADERSHIP'), tmRouter);
+app.use('/api/audit', requireAuth, requireRole('LEADERSHIP'), auditRouter);
 app.use('/api/vigia', requireAuth, vigiaApiRouter);
 app.use('/api/search', requireAuth, searchRouter);    // unified search — 4 protocols
 app.use('/api/feedback', requireAuth, feedbackRouter); // verdict feedback loop
-app.use('/api/dashboard', requireAuth, dashboardRouter); // compliance leadership dashboard
+app.use('/api/dashboard', requireAuth, requireRole('SUPPORT_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance leadership dashboard
 
 // Serve React static build
 app.use(express.static(path.join(__dirname, 'public')));

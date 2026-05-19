@@ -22,35 +22,32 @@ Risk: ${networkAnalysis?.riskLevel || 'Unknown'} | Days open: ${regulatory?.days
   return '';
 }
 
-export default function Fraud() {
-  const [cases, setCases] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = Math.floor((Date.now() - new Date(ts)) / 86400000);
+  if (d === 0) return 'Today';
+  if (d === 1) return 'Yesterday';
+  return `${d}d ago`;
+}
+
+function getToken() { return localStorage.getItem('vigia_token'); }
+const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
+
+// ── Case Detail ─────────────────────────────────────────────────
+function CaseDetail({ caseId, onClose }) {
   const [caseData, setCaseData] = useState(null);
-  const [caseLoading, setCaseLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState(null);
   const [command, setCommand] = useState('');
   const [viewMode, setViewMode] = useState('response');
 
   useEffect(() => {
-    api.fraud.cases()
-      .then(d => setCases(d.cases || []))
-      .catch(() => setCases([]))
+    setLoading(true);
+    api.fraud.case(caseId)
+      .then(setCaseData)
+      .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
-
-  const selectCase = async (c) => {
-    setSelected(c);
-    setCaseData(null);
-    setActiveAction(null);
-    setCommand('');
-    setCaseLoading(true);
-    try {
-      const d = await api.fraud.case(c.id);
-      setCaseData(d);
-    } catch {}
-    setCaseLoading(false);
-  };
+  }, [caseId]);
 
   const handleAction = (type, mode = 'response') => {
     setActiveAction(type);
@@ -61,137 +58,280 @@ export default function Fraud() {
   };
 
   const panels = caseData?.panels;
+  const c = caseData?.case || {};
+
+  if (loading) return (
+    <div className="p-6 space-y-3">
+      <div className="h-6 bg-gray-100 rounded animate-pulse w-3/4" />
+      <div className="h-32 bg-gray-100 rounded animate-pulse" />
+    </div>
+  );
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] overflow-hidden">
-      {/* Left: Queue */}
-      <div className="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0 md:overflow-y-auto max-h-64 md:max-h-full">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-bold text-gray-900 text-base">Fraud Cases</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{loading ? 'Loading...' : `${cases.length} open`}</p>
+    <div className="p-5 max-w-2xl">
+      <div className="flex items-center gap-2 mb-5">
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">←</button>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-gray-900 text-sm">{c.id}</span>
+            <PriorityBadge status={c.status} riskFlags={panels?.networkAnalysis?.riskFlags} screeningFlags={panels?.networkAnalysis?.screeningFlags} />
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">{c.summary?.slice(0, 80)}</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {loading && Array(4).fill(0).map((_, i) => (
-            <div key={i} className="card-sm p-4"><div className="skeleton h-4 w-3/4 mb-2" /><div className="skeleton h-3 w-1/2" /></div>
-          ))}
-          {cases.map(c => (
-            <div key={c.id} onClick={() => selectCase(c)}
-              className={`queue-item ${selected?.id === c.id ? 'queue-item-active' : ''}`}>
-              <div className="flex items-start justify-between mb-1.5">
-                <span className="text-xs font-bold text-gray-700">{c.id}</span>
-                <PriorityBadge status={c.status} riskFlags={c.riskFlags} screeningFlags={c.screeningFlags} />
-              </div>
-              <p className="text-xs text-gray-600 leading-snug mb-1.5">{c.summary?.slice(0, 65) || 'No summary'}</p>
-              <p className="text-[10px] text-gray-400">{c.status} · {c.assignee || 'Unassigned'}</p>
+      </div>
+
+      {/* Case summary */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Case Overview</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            ['Total Volume', panels?.txnPattern?.totalVolume],
+            ['Transactions', panels?.txnPattern?.count],
+            ['Time Span', panels?.txnPattern?.timeSpan],
+            ['Risk Level', panels?.networkAnalysis?.riskLevel?.toUpperCase()],
+            ['Days Open', panels?.regulatory?.daysOpen],
+            ['SAR Deadline', panels?.regulatory?.sarDeadlineDays != null ? `${panels.regulatory.sarDeadlineDays}d left` : '—'],
+          ].map(([label, val]) => (
+            <div key={label} className="bg-gray-50 rounded-lg p-2.5">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+              <p className="text-sm font-bold text-gray-800 mt-0.5">{val || '—'}</p>
             </div>
           ))}
-          {!loading && cases.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-sm text-gray-400">No open cases</p>
+        </div>
+        {panels?.txnPattern?.flags?.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {panels.txnPattern.flags.map((f, i) => (
+              <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1.5">⚠️ {f}</p>
+            ))}
+          </div>
+        )}
+        {c.userId && (
+          <p className="text-xs text-gray-400 font-mono mt-3">User ID: {c.userId}</p>
+        )}
+      </div>
+
+      {/* What tools to check */}
+      {(panels?.networkAnalysis?.screeningFlags?.length > 0 || panels?.networkAnalysis?.riskLevel === 'HIGH') && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 mb-4">
+          <p className="text-xs font-semibold text-orange-700 mb-2">🔍 Investigate Further</p>
+          <ul className="space-y-1.5 text-xs text-orange-800">
+            {panels?.networkAnalysis?.screeningFlags?.includes('Elliptic') && (
+              <li>→ Check Elliptic — blockchain risk flags detected</li>
+            )}
+            {panels?.networkAnalysis?.riskLevel === 'HIGH' && (
+              <li>→ Review in Kount — high risk score on this account</li>
+            )}
+            <li>→ Check Jira AR project for prior investigations on this user</li>
+            {panels?.regulatory?.daysOpen > 25 && (
+              <li className="font-bold">→ SAR clock critical — {panels.regulatory.sarDeadlineDays ?? '?'} days remaining</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Investigation Actions</p>
+        <div className="space-y-2">
+          {[
+            { type: 'analysis', label: '🔎 Get Vigía Analysis', desc: 'Risk assessment and pattern classification', mode: 'response' },
+            { type: 'narrative', label: '📝 Write Investigation Narrative', desc: 'Pre-filled SAR narrative template', mode: 'narrative' },
+            { type: 'escalation', label: '🚨 Escalation Recommendation', desc: 'Block / Limit / Monitor / Clear', mode: 'response' },
+          ].map(a => (
+            <button key={a.type} onClick={() => handleAction(a.type, a.mode)}
+              className={`w-full text-left flex items-center gap-3 p-3.5 rounded-xl border transition-all ${activeAction === a.type ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-800">{a.label}</p>
+                <p className="text-xs text-gray-500">{a.desc}</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {viewMode === 'response' && command && (
+        <VigiaResponse command={command} portalType="fraud" resourceId={c.id} />
+      )}
+      {viewMode === 'narrative' && (
+        <NarrativeEditor mode="fraud" resourceId={c.id}
+          patternText={`${panels?.txnPattern?.count || 0} transactions totaling ${panels?.txnPattern?.totalVolume || 'N/A'} over ${panels?.txnPattern?.timeSpan || 'N/A'}. ${panels?.txnPattern?.flags?.join(' ') || ''}`} />
+      )}
+    </div>
+  );
+}
+
+// ── Status Group ────────────────────────────────────────────────
+function StatusGroup({ label, color, dotColor, cases, onSelect }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
+        <div className="flex items-center gap-3">
+          <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+          <span className="font-semibold text-gray-900 text-sm">{label}</span>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">{cases.length}</span>
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && cases.length > 0 && (
+        <div className="border-t border-gray-100">
+          {cases.map(c => (
+            <button key={c.id} onClick={() => onSelect(c)}
+              className="w-full text-left px-5 py-3.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-bold text-gray-600">{c.id}</span>
+                    <PriorityBadge status={c.status} riskFlags={c.riskFlags} screeningFlags={c.screeningFlags} />
+                  </div>
+                  <p className="text-sm text-gray-800 truncate">{c.summary?.slice(0, 70) || 'No summary'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{c.assignee || 'Unassigned'} · {timeAgo(c.created_at)}</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {open && cases.length === 0 && (
+        <div className="border-t border-gray-100 py-4 text-center text-sm text-gray-400">No cases in this group</div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Fraud Component ────────────────────────────────────────
+export default function Fraud() {
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  useEffect(() => {
+    api.fraud.cases()
+      .then(d => setCases(d.cases || []))
+      .catch(() => setCases([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const doSearch = async (e) => {
+    e?.preventDefault();
+    if (!searchQuery.trim()) { setSearchResults(null); return; }
+    setSearchLoading(true);
+    try {
+      const r = await fetch('/api/support/search', {
+        method: 'POST', headers: authHdr(),
+        body: JSON.stringify({ query: searchQuery.trim() })
+      });
+      const d = await r.json();
+      // Also filter cases by query
+      const q = searchQuery.toLowerCase();
+      const matchedCases = cases.filter(c =>
+        c.id?.toLowerCase().includes(q) ||
+        c.summary?.toLowerCase().includes(q) ||
+        c.userId?.toLowerCase().includes(q)
+      );
+      setSearchResults({ user: d, cases: matchedCases });
+    } catch {}
+    setSearchLoading(false);
+  };
+
+  // Group cases by status
+  const escalate = cases.filter(c => c.status?.toLowerCase().includes('escalat'));
+  const active = cases.filter(c => !c.status?.toLowerCase().includes('escalat') && (c.riskFlags?.length > 0 || c.screeningFlags?.length > 0));
+  const low = cases.filter(c => !c.status?.toLowerCase().includes('escalat') && !c.riskFlags?.length && !c.screeningFlags?.length);
+
+  if (selectedId) {
+    return (
+      <div className="h-[calc(100vh-3.5rem)] overflow-y-auto bg-gray-50">
+        <CaseDetail caseId={selectedId} onClose={() => setSelectedId(null)} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6">
+
+      {/* Search — PRIMARY */}
+      <div className="mb-6">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Search User or Case</p>
+        <form onSubmit={doSearch} className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
+            placeholder="User name, email, account ID, or case ID..."
+            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 bg-white"
+          />
+          <button type="submit" disabled={searchLoading}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60"
+            style={{ background: '#DC2626' }}>
+            {searchLoading ? '...' : 'Search'}
+          </button>
+        </form>
+      </div>
+
+      {/* Search results */}
+      {searchResults && (
+        <div className="mb-6 space-y-3">
+          {searchResults.cases?.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-600">Cases matching "{searchQuery}"</p>
+              </div>
+              {searchResults.cases.map(c => (
+                <button key={c.id} onClick={() => setSelectedId(c.id)}
+                  className="w-full text-left px-4 py-3.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-bold text-gray-600">{c.id}</span>
+                        <PriorityBadge status={c.status} riskFlags={c.riskFlags} screeningFlags={c.screeningFlags} />
+                      </div>
+                      <p className="text-sm text-gray-800">{c.summary?.slice(0, 70)}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchResults.cases?.length === 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-400 text-center">
+              No cases found for "{searchQuery}"
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Right: Detail */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-        {!selected && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="font-medium text-gray-400">Select a case from the queue</p>
-              <p className="text-sm text-gray-300 mt-1">Click any case on the left to begin</p>
-            </div>
-          </div>
-        )}
-
-        {selected && (
-          <div className="p-6 max-w-3xl">
-            {caseLoading && (
-              <div className="space-y-4">
-                <div className="skeleton h-8 w-48" />
-                <div className="skeleton h-32 w-full" />
-                <div className="skeleton h-24 w-full" />
-              </div>
-            )}
-
-            {caseData && !caseLoading && (
-              <>
-                {/* Case header */}
-                <div className="card mb-5">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-gray-900">{caseData.case?.id}</span>
-                        <PriorityBadge status={caseData.case?.status} riskFlags={panels?.networkAnalysis?.riskFlags} />
-                      </div>
-                      <p className="text-sm text-gray-600">{caseData.case?.summary}</p>
-                      {caseData.case?.userId && <p className="text-xs text-gray-400 font-mono mt-1">User: {caseData.case.userId}</p>}
-                    </div>
-                  </div>
-
-                  {/* Data panels */}
-                  <div className="grid grid-cols-3 gap-3 mt-4">
-                    {[
-                      { label: 'Total', value: panels?.txnPattern?.totalVolume },
-                      { label: 'Transactions', value: panels?.txnPattern?.count },
-                      { label: 'Time Span', value: panels?.txnPattern?.timeSpan },
-                      { label: 'Risk Level', value: panels?.networkAnalysis?.riskLevel?.toUpperCase() },
-                      { label: 'Days Open', value: panels?.regulatory?.daysOpen },
-                      { label: 'SAR Deadline', value: `${panels?.regulatory?.sarDeadlineDays ?? '?'}d left` },
-                    ].map(d => (
-                      <div key={d.label} className="bg-gray-50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500">{d.label}</p>
-                        <p className="text-sm font-bold text-gray-800 mt-0.5">{d.value || '—'}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {panels?.txnPattern?.flags?.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {panels.txnPattern.flags.map((f, i) => (
-                        <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">{f}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="card mb-4">
-                  <p className="section-label">Investigation Actions</p>
-                  <div className="space-y-2">
-                    {[
-                      { type: 'analysis', label: 'Get Analysis from VIGÍA', desc: 'Risk assessment and pattern classification', mode: 'response' },
-                      { type: 'narrative', label: 'Write Investigation Narrative', desc: 'Pre-filled 4-section template with case data', mode: 'narrative' },
-                      { type: 'escalation', label: 'Escalation Recommendation', desc: 'Should this account be blocked, limited, or cleared?', mode: 'response' },
-                    ].map(a => (
-                      <button key={a.type} onClick={() => handleAction(a.type, a.mode)}
-                        className={`action-btn ${activeAction === a.type ? 'action-btn-active' : ''}`}>
-                        <div className={`action-btn-icon ${activeAction === a.type ? 'bg-[#00C9A7]/20' : 'bg-gray-100'}`}>
-                          <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800">{a.label}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{a.desc}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {viewMode === 'response' && command && (
-                  <VigiaResponse command={command} portalType="fraud" resourceId={caseData.case?.id} />
-                )}
-                {viewMode === 'narrative' && (
-                  <NarrativeEditor mode="fraud" resourceId={caseData.case?.id}
-                    patternText={`${panels?.txnPattern?.count || 0} transactions totaling ${panels?.txnPattern?.totalVolume || 'N/A'} over ${panels?.txnPattern?.timeSpan || 'N/A'}. ${panels?.txnPattern?.flags?.join(' ') || ''}`} />
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Cases by status — SECONDARY */}
+      {loading ? (
+        <div className="space-y-3">
+          {Array(3).fill(0).map((_, i) => (
+            <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cases by Status</p>
+          <StatusGroup label="🔴 Ready to Escalate" dotColor="bg-red-500" cases={escalate} onSelect={c => setSelectedId(c.id)} />
+          <StatusGroup label="🟡 Under Investigation" dotColor="bg-yellow-500" cases={active} onSelect={c => setSelectedId(c.id)} />
+          <StatusGroup label="🟢 Low Risk" dotColor="bg-green-500" cases={low} onSelect={c => setSelectedId(c.id)} />
+        </div>
+      )}
     </div>
   );
 }

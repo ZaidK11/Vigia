@@ -41,12 +41,13 @@ NEXT ACTION: [Specific next step]
 EWRA-20 | POL-BSA-001-v4.2 | MEM-TM-001`;
 }
 
-export default function TM() {
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+function getToken() { return localStorage.getItem('vigia_token'); }
+const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
+
+// ── Alert Detail ─────────────────────────────────────────────────
+function AlertDetail({ alertId, onClose }) {
   const [alertData, setAlertData] = useState(null);
-  const [alertLoading, setAlertLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState(null);
   const [command, setCommand] = useState('');
   const [viewMode, setViewMode] = useState('response');
@@ -54,25 +55,12 @@ export default function TM() {
   const [jiraCopied, setJiraCopied] = useState(false);
 
   useEffect(() => {
-    api.tm.alerts()
-      .then(d => setAlerts(d.alerts || []))
-      .catch(() => setAlerts([]))
+    setLoading(true);
+    api.tm.alert(alertId)
+      .then(setAlertData)
+      .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
-
-  const selectAlert = async (a) => {
-    setSelected(a);
-    setAlertData(null);
-    setActiveAction(null);
-    setCommand('');
-    setJiraNote('');
-    setAlertLoading(true);
-    try {
-      const d = await api.tm.alert(a.id);
-      setAlertData(d);
-    } catch {}
-    setAlertLoading(false);
-  };
+  }, [alertId]);
 
   const handleAction = (type, mode = 'response') => {
     setActiveAction(type);
@@ -91,190 +79,281 @@ export default function TM() {
     });
   };
 
-  const panels = alertData?.panels;
+  if (loading) return (
+    <div className="p-6 space-y-3">
+      <div className="h-6 bg-gray-100 rounded animate-pulse w-3/4" />
+      <div className="h-40 bg-gray-100 rounded animate-pulse" />
+    </div>
+  );
+
   const alert = alertData?.alert;
+  const panels = alertData?.panels;
+  if (!alert) return <div className="p-6 text-sm text-gray-400">Alert not found.</div>;
 
-  // Priority sort: New Investigation first
-  const sortedAlerts = [...alerts].sort((a, b) => {
-    const priority = (s) => s?.includes('New Investigation') ? 0 : s?.includes('New') ? 1 : 2;
-    return priority(a.status) - priority(b.status);
-  });
-
-  const sarUrgent = alert?.daysOpen > 60;
+  const sarUrgent = (alert?.daysOpen || 0) > 60;
   const clockBreach = (alert?.daysOpen || 0) * 24 > 3;
+  const sarDays = panels?.regulatory?.sarDeadlineDays;
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] overflow-hidden">
-      {/* Left: Queue */}
-      <div className="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col flex-shrink-0 md:overflow-y-auto max-h-64 md:max-h-full">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-bold text-gray-900 text-base">TM Alerts</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{loading ? 'Loading...' : `${alerts.length} open`}</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {loading && Array(5).fill(0).map((_, i) => (
-            <div key={i} className="card-sm p-3"><div className="skeleton h-4 w-3/4 mb-2" /><div className="skeleton h-3 w-1/2" /></div>
-          ))}
-          {sortedAlerts.map(a => {
-            const isNew = a.status?.includes('New Investigation');
-            return (
-              <div key={a.id} onClick={() => selectAlert(a)}
-                className={`queue-item ${selected?.id === a.id ? 'queue-item-active' : ''}`}>
-                <div className="flex items-start justify-between mb-1.5">
-                  <span className="text-xs font-bold text-gray-700">{a.id}</span>
-                  <span className={isNew ? 'priority-high' : 'priority-medium'}>{a.status}</span>
-                </div>
-                <p className="text-xs text-gray-600 truncate mb-1">{a.summary?.slice(0, 55) || a.type || 'TM Alert'}</p>
-                <p className="text-[10px] text-gray-400">{a.assignedTo || 'Unassigned'}</p>
-              </div>
-            );
-          })}
-          {!loading && alerts.length === 0 && (
-            <div className="text-center py-8"><p className="text-sm text-gray-400">No open alerts</p></div>
-          )}
+    <div className="p-5 max-w-2xl">
+      <div className="flex items-center gap-2 mb-5">
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">←</button>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-gray-900 text-sm">{alert.id}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${alert.status?.includes('New Investigation') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {alert.status}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">{alert.summary?.slice(0, 80)}</p>
         </div>
       </div>
 
-      {/* Right: Detail */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-        {!selected && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="font-medium text-gray-400">Select an alert from the queue</p>
-              <p className="text-sm text-gray-300 mt-1">Sorted by priority — New Investigation first</p>
+      {/* 3hr clock */}
+      {clockBreach && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4 flex items-center gap-2">
+          <span className="text-amber-500">⏱</span>
+          <p className="text-sm text-amber-700">
+            <strong>3-Hour SLA:</strong> This alert is {alert.daysOpen} day(s) old — disposition must be documented.
+          </p>
+        </div>
+      )}
+
+      {/* SAR countdown — prominent when critical */}
+      {sarDays != null && (
+        <div className={`rounded-xl border p-4 mb-4 ${sarDays <= 5 ? 'border-red-300 bg-red-50' : sarDays <= 15 ? 'border-orange-200 bg-orange-50' : 'border-gray-200 bg-white'}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SAR Deadline</p>
+              <p className={`text-2xl font-black mt-0.5 ${sarDays <= 5 ? 'text-red-600' : sarDays <= 15 ? 'text-orange-600' : 'text-gray-800'}`}>
+                {sarDays} days remaining
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{alert.daysOpen || 0} days since alert opened</p>
             </div>
+            {sarDays <= 5 && (
+              <div className="text-red-500 text-3xl">🚨</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Case overview */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Alert Overview</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            ['Total Volume', panels?.txnPattern?.totalVolume],
+            ['Transactions', panels?.txnPattern?.count],
+            ['Time Span', panels?.txnPattern?.timeSpan],
+          ].map(([label, val]) => (
+            <div key={label} className="bg-gray-50 rounded-lg p-2.5 text-center">
+              <p className="text-[10px] text-gray-400 uppercase">{label}</p>
+              <p className="text-sm font-bold text-gray-800 mt-0.5">{val || '—'}</p>
+            </div>
+          ))}
+        </div>
+        {panels?.txnPattern?.flags?.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {panels.txnPattern.flags.map((f, i) => (
+              <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1.5">⚠️ {f}</p>
+            ))}
           </div>
         )}
+        {alert.userId && (
+          <p className="text-xs text-gray-400 font-mono mt-3">User ID: {alert.userId}</p>
+        )}
+      </div>
 
-        {selected && (
-          <div className="p-6 max-w-3xl">
-            {alertLoading && (
-              <div className="space-y-4">
-                <div className="skeleton h-8 w-48" /><div className="skeleton h-40 w-full" />
+      {/* Investigation actions */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Investigation Actions</p>
+        <div className="space-y-2">
+          {[
+            { type: 'analysis', label: '📡 Get Vigía Analysis', desc: 'SAR recommendation and risk assessment', mode: 'response' },
+            { type: 'sar', label: '📝 Generate SAR Narrative', desc: 'Pre-filled 4-section template', mode: 'narrative' },
+            { type: 'jira', label: '📋 Write Jira Note', desc: 'Copy-ready note for Jira case file', mode: 'jira' },
+            { type: 'related', label: '🔗 Related Cases & Typologies', desc: 'FinCEN patterns, cross-references', mode: 'response' },
+            { type: 'actions', label: '⚡ Account Action Recommendation', desc: 'Limit / suspend / compensating controls', mode: 'response' },
+          ].map(a => (
+            <button key={a.type} onClick={() => handleAction(a.type, a.mode)}
+              className={`w-full text-left flex items-center justify-between p-3.5 rounded-xl border transition-all ${activeAction === a.type ? 'border-amber-300 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">{a.label}</p>
+                <p className="text-xs text-gray-500">{a.desc}</p>
               </div>
-            )}
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </div>
 
-            {alert && !alertLoading && (
-              <>
-                {/* 3hr Clock Warning */}
-                {clockBreach && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-2">
-                    <span className="text-amber-500 text-sm">⏱</span>
-                    <p className="text-sm text-amber-700">
-                      <strong>3-Hour SLA:</strong> This alert has been open {alert.daysOpen} day(s) — ensure disposition is documented.
-                    </p>
-                  </div>
-                )}
-
-                {/* Alert card */}
-                <div className="card mb-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-gray-900">{alert.id}</span>
-                        <span className={alert.status?.includes('New Investigation') ? 'priority-high' : 'priority-medium'}>
-                          {alert.status}
-                        </span>
-                        {alert.isLimited && <span className="badge-limited">Limited</span>}
-                      </div>
-                      <p className="text-sm text-gray-600">{alert.summary}</p>
-                      {alert.userId && <p className="text-xs text-gray-400 font-mono mt-1">User: {alert.userId}</p>}
-                    </div>
-                    {sarUrgent && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center flex-shrink-0 ml-3">
-                        <p className="text-xs font-bold text-red-600">SAR DEADLINE</p>
-                        <p className="text-lg font-black text-red-600">{panels?.regulatory?.sarDeadlineDays ?? '?'}</p>
-                        <p className="text-[10px] text-red-400">days left</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="grid grid-cols-4 gap-3">
-                    {[
-                      { label: 'Total', value: panels?.txnPattern?.totalVolume },
-                      { label: 'Count', value: panels?.txnPattern?.count },
-                      { label: 'Span', value: panels?.txnPattern?.timeSpan },
-                      { label: 'Days Open', value: alert.daysOpen || 0, warn: clockBreach },
-                    ].map(d => (
-                      <div key={d.label} className="bg-gray-50 rounded-lg p-2.5 text-center">
-                        <p className="text-[10px] text-gray-500">{d.label}</p>
-                        <p className={`text-sm font-bold mt-0.5 ${d.warn ? 'text-amber-600' : 'text-gray-800'}`}>
-                          {d.value || '—'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Flags */}
-                  {panels?.txnPattern?.flags?.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {panels.txnPattern.flags.map((f, i) => (
-                        <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">{f}</p>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* SAR eligibility */}
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                    <div className="text-xs text-gray-500">{panels?.regulatory?.sarThreshold}</div>
-                    {!sarUrgent && (
-                      <div className="text-xs text-gray-500">SAR deadline: {panels?.regulatory?.sarDeadlineDays ?? '?'} days</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="card mb-4">
-                  <p className="section-label">Investigation Actions</p>
-                  <div className="space-y-2">
-                    {[
-                      { type: 'analysis', label: 'Get Analysis from VIGÍA', desc: 'SAR recommendation and risk assessment', mode: 'response' },
-                      { type: 'sar', label: 'Generate SAR Narrative', desc: 'Pre-filled 4-section template', mode: 'narrative' },
-                      { type: 'jira', label: 'Write Jira Investigation Note', desc: 'Copy-ready note for Jira case file', mode: 'jira' },
-                      { type: 'related', label: 'Related Cases & Typologies', desc: 'FinCEN patterns, cross-references', mode: 'response' },
-                      { type: 'actions', label: 'Account Action Recommendation', desc: 'Limit / suspend / compensating controls', mode: 'response' },
-                    ].map(a => (
-                      <button key={a.type} onClick={() => handleAction(a.type, a.mode)}
-                        className={`action-btn ${activeAction === a.type ? 'action-btn-active' : ''}`}>
-                        <div className={`action-btn-icon ${activeAction === a.type ? 'bg-[#00C9A7]/20' : 'bg-gray-100'}`}>
-                          <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800">{a.label}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{a.desc}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {viewMode === 'response' && command && (
-                  <VigiaResponse command={command} portalType="tm" resourceId={alert.id} />
-                )}
-                {viewMode === 'narrative' && (
-                  <NarrativeEditor mode="tm" resourceId={alert.id}
-                    patternText={alertData.sarTemplate?.patternDescription || `${panels?.txnPattern?.count || 0} transactions totaling ${panels?.txnPattern?.totalVolume || 'N/A'} over ${panels?.txnPattern?.timeSpan || 'N/A'}. ${panels?.txnPattern?.flags?.join(' ') || ''}`} />
-                )}
-                {viewMode === 'jira' && jiraNote && (
-                  <div className="card">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-bold text-gray-800">Jira Investigation Note</p>
-                      <button onClick={copyJira} className="btn-outline btn-sm">
-                        {jiraCopied ? 'Copied!' : 'Copy to clipboard'}
-                      </button>
-                    </div>
-                    <textarea className="textarea font-mono text-xs min-h-[280px]" value={jiraNote}
-                      onChange={e => setJiraNote(e.target.value)} />
-                    <p className="text-xs text-gray-400 mt-2">Paste into Jira case comment. Fill in customer context and recommendation before posting.</p>
-                  </div>
-                )}
-              </>
-            )}
+      {viewMode === 'response' && command && (
+        <VigiaResponse command={command} portalType="tm" resourceId={alert.id} />
+      )}
+      {viewMode === 'narrative' && (
+        <NarrativeEditor mode="tm" resourceId={alert.id}
+          patternText={alertData.sarTemplate?.patternDescription || `${panels?.txnPattern?.count || 0} transactions totaling ${panels?.txnPattern?.totalVolume || 'N/A'} over ${panels?.txnPattern?.timeSpan || 'N/A'}. ${panels?.txnPattern?.flags?.join(' ') || ''}`} />
+      )}
+      {viewMode === 'jira' && jiraNote && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-gray-800">Jira Investigation Note</p>
+            <button onClick={copyJira}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-all">
+              {jiraCopied ? '✓ Copied!' : 'Copy'}
+            </button>
           </div>
-        )}
+          <textarea className="w-full font-mono text-xs border border-gray-200 rounded-xl p-3 min-h-[240px] resize-none focus:outline-none"
+            value={jiraNote} onChange={e => setJiraNote(e.target.value)} />
+          <p className="text-xs text-gray-400 mt-2">Paste into Jira case comment. Fill customer context and recommendation first.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Status Group ─────────────────────────────────────────────────
+function StatusGroup({ icon, label, dotColor, count, onClickAll }) {
+  return (
+    <button onClick={onClickAll}
+      className="w-full flex items-center justify-between px-5 py-4 rounded-2xl border border-gray-200 bg-white hover:shadow-sm hover:border-gray-300 transition-all">
+      <div className="flex items-center gap-3">
+        <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+        <span className="text-sm font-semibold text-gray-900">{label}</span>
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">{count}</span>
+      </div>
+      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+  );
+}
+
+// ── Main TM Component ─────────────────────────────────────────────
+export default function TM() {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
+  const [showGroup, setShowGroup] = useState(null);
+
+  useEffect(() => {
+    api.tm.alerts()
+      .then(d => setAlerts(d.alerts || []))
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const doSearch = async (e) => {
+    e?.preventDefault();
+    if (!searchQuery.trim()) { setSearchResults(null); return; }
+    setSearchLoading(true);
+    try {
+      const q = searchQuery.toLowerCase();
+      const matched = alerts.filter(a =>
+        a.id?.toLowerCase().includes(q) ||
+        a.userId?.toLowerCase().includes(q) ||
+        a.summary?.toLowerCase().includes(q)
+      );
+      setSearchResults(matched);
+    } catch {}
+    setSearchLoading(false);
+  };
+
+  const escalate = alerts.filter(a => a.status?.toLowerCase().includes('escalat') || a.status?.includes('Ready'));
+  const newAlerts = alerts.filter(a => a.status?.includes('New'));
+  const monitoring = alerts.filter(a => !a.status?.includes('New') && !a.status?.toLowerCase().includes('escalat') && !a.status?.toLowerCase().includes('ready'));
+
+  const renderAlertList = (list) => (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mt-2">
+      {list.map(a => {
+        const sarDays = null; // loaded in detail view
+        return (
+          <button key={a.id} onClick={() => setSelectedId(a.id)}
+            className="w-full text-left px-4 py-3.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-xs font-bold text-gray-600">{a.id}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${a.status?.includes('New Investigation') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    {a.status}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-800 truncate">{a.summary?.slice(0, 65) || a.type || 'TM Alert'}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{a.assignedTo || 'Unassigned'}</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (selectedId) {
+    return (
+      <div className="h-[calc(100vh-3.5rem)] overflow-y-auto bg-gray-50">
+        <AlertDetail alertId={selectedId} onClose={() => setSelectedId(null)} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6">
+
+      {/* Search — PRIMARY */}
+      <div className="mb-6">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Search User or Alert</p>
+        <form onSubmit={doSearch} className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
+            placeholder="User ID, alert ID, or summary..."
+            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 bg-white"
+          />
+          <button type="submit" disabled={searchLoading}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60"
+            style={{ background: '#D97706' }}>
+            {searchLoading ? '...' : 'Search'}
+          </button>
+        </form>
+      </div>
+
+      {/* Search results */}
+      {searchResults !== null && (
+        <div className="mb-6">
+          {searchResults.length > 0
+            ? renderAlertList(searchResults)
+            : <div className="rounded-xl border border-gray-200 bg-white p-4 text-center text-sm text-gray-400">No alerts found for "{searchQuery}"</div>
+          }
+        </div>
+      )}
+
+      {/* Alerts by status — SECONDARY */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Alerts by Status</p>
+
+        <div>
+          <StatusGroup icon="🔴" label="Ready to Escalate" dotColor="bg-red-500" count={escalate.length} onClickAll={() => setShowGroup(showGroup === 'escalate' ? null : 'escalate')} />
+          {showGroup === 'escalate' && renderAlertList(escalate)}
+        </div>
+
+        <div>
+          <StatusGroup icon="🟡" label="New Alerts" dotColor="bg-yellow-500" count={newAlerts.length} onClickAll={() => setShowGroup(showGroup === 'new' ? null : 'new')} />
+          {showGroup === 'new' && renderAlertList(newAlerts)}
+        </div>
+
+        <div>
+          <StatusGroup icon="🟢" label="Under Investigation" dotColor="bg-green-500" count={monitoring.length} onClickAll={() => setShowGroup(showGroup === 'monitor' ? null : 'monitor')} />
+          {showGroup === 'monitor' && renderAlertList(monitoring)}
+        </div>
       </div>
     </div>
   );

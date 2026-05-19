@@ -15,11 +15,15 @@ export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 const PORTAL_ROLES = {
-  dashboard: ['LEADERSHIP', 'TM_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'SUPPORT_ANALYST'],
-  support: ['SUPPORT_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'],
+  // Dashboard: Support team + Leadership only (Group Lines team + Laura)
+  dashboard: ['SUPPORT_ANALYST', 'LEADERSHIP'],
+  // Support: Support team only
+  support: ['SUPPORT_ANALYST'],
+  // Fraud / KYC / TM: Compliance team only
   fraud: ['FRAUD_INVESTIGATOR', 'LEADERSHIP'],
   kyc: ['KYC_ANALYST', 'LEADERSHIP'],
   tm: ['TM_ANALYST', 'LEADERSHIP'],
+  // Leadership Overview: Zaid + compliance managers + Laura
   leadership: ['LEADERSHIP']
 };
 
