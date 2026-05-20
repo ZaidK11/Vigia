@@ -31,6 +31,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust Railway's proxy (needed for correct protocol detection)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());

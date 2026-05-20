@@ -8,8 +8,8 @@ function buildGoogleStrategy() {
   return new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: CALLBACK_URL,
-    proxy: true  // trust x-forwarded-proto from Railway load balancer
+    callbackURL: CALLBACK_URL
+    // Note: do NOT use proxy:true — it causes Railway to override the callback URL
   }, (accessToken, refreshToken, profile, done) => {
     const email = profile.emails?.[0]?.value?.toLowerCase();
 
