@@ -122,6 +122,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// SSO diagnostic (non-sensitive — just shows if vars are set, not the values)
+app.get('/api/health/sso', (req, res) => {
+  res.json({
+    google_client_id_set: !!process.env.GOOGLE_CLIENT_ID,
+    google_client_secret_set: !!process.env.GOOGLE_CLIENT_SECRET,
+    google_client_id_prefix: process.env.GOOGLE_CLIENT_ID?.slice(0, 12) + '...' || 'not set',
+    sso_ready: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  });
+});
+
 // Start compliance dashboard cron job
 startScheduler();
 
