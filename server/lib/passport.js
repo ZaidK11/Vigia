@@ -2,11 +2,14 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { EMPLOYEES, ROLE_PORTALS } = require('../employees');
 
+const CALLBACK_URL = 'https://vigia-production-5a0a.up.railway.app/auth/google/callback';
+
 function buildGoogleStrategy() {
   return new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://vigia-production-5a0a.up.railway.app/auth/google/callback'
+    callbackURL: CALLBACK_URL,
+    proxy: true  // trust x-forwarded-proto from Railway load balancer
   }, (accessToken, refreshToken, profile, done) => {
     const email = profile.emails?.[0]?.value?.toLowerCase();
 
@@ -14,18 +17,16 @@ function buildGoogleStrategy() {
       return done(null, false, { message: 'No email found in Google profile' });
     }
 
-    // Must be @airtm.io
     if (!email.endsWith('@airtm.io')) {
       return done(null, false, { message: 'Access restricted to @airtm.io accounts' });
     }
 
-    // Must be on the employee whitelist
     const employee = EMPLOYEES[email];
     if (!employee) {
       return done(null, false, { message: 'Account not on the Airtm compliance portal whitelist' });
     }
 
-    const user = {
+    return done(null, {
       email,
       name: employee.name,
       department: employee.department,
@@ -33,29 +34,27 @@ function buildGoogleStrategy() {
       role: employee.role,
       portals: ROLE_PORTALS[employee.role] || ['support'],
       avatar: profile.photos?.[0]?.value || null
-    };
-
-    return done(null, user);
+    });
   });
 }
 
-// Initialize at startup if available
+// Initialize at startup
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  console.log('[VIGÍA] Google SSO configured — OAuth ready');
+  console.log('[VIGÍA] Google SSO configured — callback:', CALLBACK_URL);
   passport.use('google', buildGoogleStrategy());
 } else {
-  console.warn('[VIGÍA] Google SSO not configured at startup — GOOGLE_CLIENT_ID/SECRET missing. Email login only.');
+  console.warn('[VIGÍA] GOOGLE_CLIENT_ID/SECRET not set — SSO disabled, email login only');
 }
 
-// Re-initialize function for lazy loading (called from sso.js if startup missed it)
+// Lazy reinit (called from sso.js if startup init failed)
 passport.reinitGoogle = function () {
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     try {
       passport.use('google', buildGoogleStrategy());
-      console.log('[VIGÍA] Google SSO re-initialized successfully');
+      console.log('[VIGÍA] Google SSO re-initialized, callback:', CALLBACK_URL);
       return true;
     } catch (e) {
-      console.error('[VIGÍA] Google SSO reinit failed:', e.message);
+      console.error('[VIGÍA] reinitGoogle failed:', e.message);
       return false;
     }
   }
