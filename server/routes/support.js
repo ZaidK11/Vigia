@@ -236,12 +236,15 @@ ACCOUNT CONTEXT:
 CUSTOMER MESSAGE:
 "${lastMsg}"
 
-Generate a professional, empathetic support response (under 120 words):
-1. Acknowledge their specific issue
-2. Explain what's happening or what they need to do
-3. Give clear next steps with timeline
-4. Warm, helpful Airtm brand voice
-Also note: is escalation to compliance needed? (YES/NO and why)`;
+Step 1 — Check if this is a special request (cashier application, business/merchant account, P2P agent, high-value transaction, account recovery after ban). If YES, recommend escalation and do NOT write a response template.
+
+Step 2 — If routine, generate a professional, specific, empathetic support response (under 120 words):
+1. Acknowledge their SPECIFIC issue (not generic)
+2. Explain clearly what's happening or what they need to do
+3. Give concrete next steps with timeline
+4. Warm, helpful Airtm tone — sound human, not like a template
+5. Reference the account context above (age, KYC status, risk) if relevant
+Also: is escalation to compliance needed? (YES/NO and one-line reason)`;
 }
 
 // ── Role enforcement for ticket-specific routes ────────────────

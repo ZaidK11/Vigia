@@ -238,7 +238,7 @@ router.post('/chat', async (req, res) => {
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: COMPLIANCE_SYSTEM_PROMPT,
       messages: messages
         .filter(m => m.role && m.content)
         .map(m => ({ role: m.role, content: m.content }))

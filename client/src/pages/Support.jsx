@@ -267,6 +267,25 @@ function TicketDetail({ ticketId, onClose }) {
         </div>
       )}
 
+      {/* Generate Response — prominent, right after verdict */}
+      {command && !replySent && !escalated && (
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4 mb-4">
+          <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2.5">
+            Step: Generate a Response
+          </p>
+          <VigiaResponse
+            command={command}
+            portalType="support"
+            resourceId={`FD-${ticket.id}`}
+            label="✍️ Generate Response for This Ticket"
+            onComplete={handleVigiaComplete}
+          />
+          {vigiaUsed && (
+            <p className="text-[10px] text-blue-500 mt-2">Response generated — scroll down to edit and send</p>
+          )}
+        </div>
+      )}
+
       {/* Customer's original message */}
       {(() => {
         const firstCustomerMsg = conv.find(c => c.author_type === 'customer');
