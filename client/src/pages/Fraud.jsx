@@ -395,8 +395,8 @@ function CaseDetail({ caseId, onClose }) {
 }
 
 // ── Status Group ─────────────────────────────────────────────────
-function StatusGroup({ label, dotColor, cases, onSelect }) {
-  const [open, setOpen] = useState(false);
+function StatusGroup({ label, dotColor, cases, onSelect, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
@@ -550,8 +550,9 @@ export default function Fraud() {
       ) : (
         <div className="space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cases by Status</p>
-          <StatusGroup label="🔴 Ready to Escalate" dotColor="bg-red-500" cases={escalate} onSelect={setSelectedId} />
-          <StatusGroup label="🟡 Under Investigation" dotColor="bg-yellow-500" cases={active} onSelect={setSelectedId} />
+          <p className="text-[10px] text-gray-400 mb-2">Click a group to expand → click a case to investigate</p>
+          <StatusGroup label="🔴 Ready to Escalate" dotColor="bg-red-500" cases={escalate} onSelect={setSelectedId} defaultOpen={escalate.length > 0} />
+          <StatusGroup label="🟡 Under Investigation" dotColor="bg-yellow-500" cases={active} onSelect={setSelectedId} defaultOpen={escalate.length === 0 && active.length > 0} />
           <StatusGroup label="👁️ Monitoring" dotColor="bg-blue-400" cases={monitoring} onSelect={setSelectedId} />
           {rest.length > 0 && (
             <StatusGroup label="📋 Other Open Cases" dotColor="bg-gray-400" cases={rest} onSelect={setSelectedId} />

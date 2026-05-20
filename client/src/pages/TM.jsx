@@ -457,7 +457,7 @@ export default function TM() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
-  const [showGroup, setShowGroup] = useState(null);
+  const [showGroup, setShowGroup] = useState('escalate'); // auto-open Ready to Escalate
 
   useEffect(() => {
     api.tm.alerts()
@@ -555,6 +555,7 @@ export default function TM() {
       {/* Alerts by status — SECONDARY */}
       <div className="space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Alerts by Status</p>
+        <p className="text-[10px] text-gray-400 mb-2">Click a group to expand → click an alert to investigate</p>
 
         <div>
           <StatusGroup icon="🔴" label="Ready to Escalate" dotColor="bg-red-500" count={escalate.length} onClickAll={() => setShowGroup(showGroup === 'escalate' ? null : 'escalate')} />
