@@ -25,6 +25,7 @@ const vigiaApiRouter = require('./routes/vigia-api');
 const searchRouter = require('./routes/search');
 const feedbackRouter = require('./routes/feedback');
 const dashboardRouter = require('./routes/dashboard');
+const ckeRouter = require('./routes/cke');
 const { startScheduler } = require('./jobs/updateDashboard');
 
 const path = require('path');
@@ -85,6 +86,7 @@ app.use('/api/vigia', requireAuth, vigiaApiRouter);
 app.use('/api/search', requireAuth, searchRouter);    // unified search — 4 protocols
 app.use('/api/feedback', requireAuth, feedbackRouter); // verdict feedback loop
 app.use('/api/dashboard', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance only
+app.use('/api/cke', requireAuth, requireRole('LEADERSHIP'), ckeRouter); // CKE bridge — Leadership only
 
 // Serve React static build
 app.use(express.static(path.join(__dirname, 'public')));

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
-import VigiaChat from '../components/VigiaChat.jsx';
+import CkeChat from '../components/CkeChat.jsx';
 
 function MetricCard({ label, value, sub, color, loading }) {
   const colorMap = {
@@ -91,7 +91,7 @@ export default function Leadership() {
           <div className="w-24" />
         </div>
         <div className="flex-1 min-h-0">
-          <VigiaChat />
+          <CkeChat />
         </div>
       </div>
     );

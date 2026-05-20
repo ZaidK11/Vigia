@@ -96,5 +96,10 @@ export const api = {
       streamSSE('/api/vigia/analyze', { command, portalType, resourceId, language }),
     chatStream: (messages) =>
       streamSSE('/api/vigia/chat', { messages })
+  },
+  cke: {
+    askStream: (question, conversationHistory) =>
+      streamSSE('/api/cke/ask', { question, conversationHistory }),
+    log: () => req('/api/cke/log')
   }
 };
