@@ -249,7 +249,7 @@ function CaseDetail({ caseId, onClose }) {
           command={investigationCommand}
           portalType="fraud"
           resourceId={c.id}
-          label="🔎 Get Fraud Verdict"
+          label="🔎 Get Fraud Overview"
           onComplete={handleAnalysisComplete}
         />
       </div>

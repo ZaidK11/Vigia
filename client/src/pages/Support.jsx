@@ -416,6 +416,55 @@ function SearchResult({ result }) {
   );
 }
 
+
+// ── Metrics Bar ──────────────────────────────────────────────────
+function MetricsBar() {
+  const [metrics, setMetrics] = React.useState(null);
+
+  const fetchMetrics = React.useCallback(() => {
+    fetch('/api/support/metrics', { headers: authHdr() })
+      .then(r => r.json())
+      .then(setMetrics)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchMetrics();
+    const iv = setInterval(fetchMetrics, 60000);
+    return () => clearInterval(iv);
+  }, [fetchMetrics]);
+
+  if (!metrics) return null;
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap mb-5 p-3.5 rounded-xl bg-white border border-gray-200">
+      <div className="flex items-center gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-blue-500" />
+        <span className="text-xs text-gray-500">Open:</span>
+        <span className="text-xs font-bold text-gray-900">{metrics.open ?? '—'}</span>
+      </div>
+      <div className="w-px h-3 bg-gray-200" />
+      <div className="flex items-center gap-1.5">
+        <div className={`w-2 h-2 rounded-full ${metrics.overdue > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+        <span className="text-xs text-gray-500">Overdue (&gt;3h):</span>
+        <span className={`text-xs font-bold ${metrics.overdue > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+          {metrics.overdue ?? '—'}
+        </span>
+      </div>
+      <div className="w-px h-3 bg-gray-200" />
+      <div className="flex items-center gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-green-500" />
+        <span className="text-xs text-gray-500">Avg close:</span>
+        <span className="text-xs font-bold text-gray-900">
+          {metrics.avgCloseHours != null ? `${metrics.avgCloseHours}h` : '—'}
+        </span>
+      </div>
+      <div className="flex-1" />
+      <span className="text-[10px] text-gray-400">Updates every 60s</span>
+    </div>
+  );
+}
+
 // ── Main Support Component ──────────────────────────────────────
 export default function Support() {
   const [tickets, setTickets] = useState([]);
@@ -489,6 +538,9 @@ export default function Support() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
+
+      {/* Metrics bar */}
+      <MetricsBar />
 
       {/* Search — PRIMARY */}
       <div className="mb-6">

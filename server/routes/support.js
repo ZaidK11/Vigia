@@ -245,7 +245,7 @@ Also note: is escalation to compliance needed? (YES/NO and why)`;
 }
 
 // ── Role enforcement for ticket-specific routes ────────────────
-const SUPPORT_ROLES = ['SUPPORT_ANALYST'];
+const SUPPORT_ROLES = ['SUPPORT_ANALYST', 'LEADERSHIP'];
 function requireSupport(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   if (!SUPPORT_ROLES.includes(req.user.role)) {
@@ -409,6 +409,44 @@ router.post('/ticket/:id/escalate', requireSupport, async (req, res) => {
   });
 
   res.json({ success: true });
+});
+
+// ── GET /api/support/metrics — real-time queue stats ───────────────
+router.get('/metrics', requireSupport, async (req, res) => {
+  try {
+    const [openTickets, recentResolved] = await Promise.all([
+      // All open/pending tickets
+      fdGet('/tickets', { order_by: 'created_at', order_type: 'desc', per_page: 100, include: 'stats' }),
+      // Recently resolved (last 50) for avg close time
+      fdGet('/tickets', { order_by: 'updated_at', order_type: 'desc', per_page: 50, filter: 'resolved', include: 'stats' })
+    ]);
+
+    const open = (openTickets || []).filter(t => t.status === 2 || t.status === 3);
+    const overdue = open.filter(t => {
+      const hrs = Math.floor((Date.now() - new Date(t.created_at)) / 3600000);
+      return hrs >= 3;
+    });
+
+    // Avg resolution time from recently resolved tickets
+    let avgCloseHours = null;
+    const resolved = (recentResolved || []).filter(t => t.stats?.resolved_at && t.created_at);
+    if (resolved.length > 0) {
+      const totalMs = resolved.reduce((s, t) => {
+        return s + (new Date(t.stats.resolved_at) - new Date(t.created_at));
+      }, 0);
+      avgCloseHours = Math.round((totalMs / resolved.length) / 3600000 * 10) / 10;
+    }
+
+    res.json({
+      open: open.length,
+      overdue: overdue.length,
+      queue: open.length,
+      avgCloseHours,
+      refreshedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    res.json({ open: 0, overdue: 0, queue: 0, avgCloseHours: null, error: err.message });
+  }
 });
 
 // ── POST /api/support/search — user search ───────────────────────

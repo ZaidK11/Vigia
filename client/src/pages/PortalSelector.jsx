@@ -8,7 +8,7 @@ const PORTALS = [
     icon: '🎧',
     title: 'Support Portal',
     desc: 'Search customers, handle tickets, escalate issues to compliance.',
-    roles: ['SUPPORT_ANALYST'],
+    roles: ['SUPPORT_ANALYST', 'LEADERSHIP'],
     color: '#0066FF',
     bg: '#EFF6FF',
   },

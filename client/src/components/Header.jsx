@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
 
 const TABS = [
-  { path: '/support',    label: '🎧 Support',    icon: '🎧', roles: ['SUPPORT_ANALYST'] },
+  { path: '/support',    label: '🎧 Support',    icon: '🎧', roles: ['SUPPORT_ANALYST', 'LEADERSHIP'] },
   { path: '/fraud',      label: '🔍 Fraud',      icon: '🔍', roles: ['FRAUD_INVESTIGATOR', 'LEADERSHIP'] },
   { path: '/kyc',        label: '🪪 KYC',         icon: '🪪', roles: ['KYC_ANALYST', 'LEADERSHIP'] },
   { path: '/tm',         label: '📡 TM Alerts',  icon: '📡', roles: ['TM_ANALYST', 'LEADERSHIP'] },
