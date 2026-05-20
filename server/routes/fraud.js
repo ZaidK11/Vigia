@@ -216,3 +216,116 @@ router.post('/decision', (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/fraud/patterns — daily pattern signals from Elliptic, Kount, ClickHouse
+router.get('/patterns', async (req, res) => {
+  try {
+    const [
+      highRiskElliptic,
+      highRiskPlatform,
+      recentEscalations,
+      kountHighRisk,
+    ] = await Promise.all([
+      // Elliptic: accounts with blockchain risk scores > 0 (flagged)
+      ch.query(`
+        SELECT COUNT(DISTINCT user_id) as cnt, AVG(risk_score) as avg_score
+        FROM data_lake.operations_silvally_elliptic
+        WHERE risk_score > 0
+          AND created_at >= now() - INTERVAL 7 DAY
+      `).catch(() => []),
+
+      // Platform: HIGH risk accounts active in last 7 days
+      ch.query(`
+        SELECT COUNT(*) as cnt
+        FROM data_lake.security_hub_dodrio_risk_level
+        WHERE risk_level = 'high'
+          AND created_at >= now() - INTERVAL 7 DAY
+          AND _peerdb_is_deleted = 0
+      `).catch(() => []),
+
+      // Recent cases ready to escalate
+      ch.query(`
+        SELECT COUNT(*) as cnt
+        FROM analytics_compliance.fact_ar_issues
+        WHERE current_status IN ('Ready to escalate', 'New Investigation')
+          AND is_closed = 0
+          AND created_at >= now() - INTERVAL 30 DAY
+      `).catch(() => []),
+
+      // Accounts with Kount sessions (proxy for active fraud monitoring)
+      ch.query(`
+        SELECT COUNT(DISTINCT user_id) as cnt
+        FROM data_lake.security_hub_dodrio_last_kount_session
+        WHERE _peerdb_is_deleted = 0
+      `).catch(() => []),
+    ]);
+
+    const signals = [];
+
+    // Elliptic blockchain risk signal
+    const ellipticCount = parseInt(highRiskElliptic?.[0]?.cnt || 0);
+    const ellipticAvg = parseFloat(highRiskElliptic?.[0]?.avg_score || 0).toFixed(3);
+    if (ellipticCount > 0) {
+      signals.push({
+        severity: ellipticCount > 50 ? 'HIGH' : 'MEDIUM',
+        title: 'Elliptic Blockchain Risk Flags',
+        description: `${ellipticCount} wallets with blockchain risk score > 0 in the last 7 days. Average risk score: ${ellipticAvg}. Review for sanctions exposure or illicit fund flows.`,
+        count: ellipticCount,
+        source: 'Elliptic (ClickHouse)',
+        actionable: true,
+        trend: ellipticCount > 50 ? '↑ Elevated' : null,
+      });
+    }
+
+    // Platform risk signal
+    const platformHighRisk = parseInt(highRiskPlatform?.[0]?.cnt || 0);
+    if (platformHighRisk > 10) {
+      signals.push({
+        severity: platformHighRisk > 100 ? 'HIGH' : 'MEDIUM',
+        title: 'High Platform Risk Score Accounts',
+        description: `${platformHighRisk} accounts assigned HIGH risk by the platform in the last 7 days. These accounts warrant review for unusual activity patterns.`,
+        count: platformHighRisk,
+        source: 'Platform Risk (Dodrio)',
+        actionable: true,
+        trend: null,
+      });
+    }
+
+    // Escalation queue signal
+    const escalationCount = parseInt(recentEscalations?.[0]?.cnt || 0);
+    if (escalationCount > 5) {
+      signals.push({
+        severity: escalationCount > 20 ? 'HIGH' : 'MEDIUM',
+        title: 'Cases Awaiting Escalation Decision',
+        description: `${escalationCount} cases in "Ready to Escalate" or "New Investigation" status opened in the last 30 days. These require analyst action.`,
+        count: escalationCount,
+        source: 'Jira AR / ClickHouse',
+        actionable: true,
+        trend: null,
+      });
+    }
+
+    // If nothing flagged, return a clean signal
+    if (signals.length === 0) {
+      signals.push({
+        severity: 'LOW',
+        title: 'No Unusual Patterns Detected',
+        description: 'Current data shows no elevated risk signals. Blockchain risk, platform scores, and escalation queue are within normal range.',
+        count: 0,
+        source: 'All sources',
+        actionable: false,
+        trend: null,
+      });
+    }
+
+    res.json({
+      signals,
+      scannedAt: new Date().toISOString(),
+      sources: ['Elliptic (ClickHouse)', 'Platform Risk (Dodrio)', 'Jira AR'],
+    });
+
+  } catch (err) {
+    console.error('[Fraud patterns]', err.message);
+    res.json({ signals: [], error: err.message });
+  }
+});

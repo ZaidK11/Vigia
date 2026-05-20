@@ -440,6 +440,198 @@ function StatusGroup({ label, dotColor, cases, onSelect, defaultOpen = false }) 
   );
 }
 
+
+// -- UserInvestigatePanel --
+function UserInvestigatePanel() {
+  const [query, setQuery] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [command, setCommand] = React.useState('');
+  const [userData, setUserData] = React.useState(null);
+
+  const doInvestigate = async (e) => {
+    e?.preventDefault();
+    if (!query.trim()) return;
+    setLoading(true);
+    setCommand('');
+    setUserData(null);
+    try {
+      const r = await fetch('/api/support/search', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('vigia_token')}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() })
+      });
+      const d = await r.json();
+      setUserData(d);
+      const user = d.user || {};
+      const risk = d.risk || {};
+      const txns = d.transactions || [];
+      const age = user.registered_at ? Math.floor((Date.now() - new Date(user.registered_at)) / 86400000) : null;
+      const total = txns.reduce((s, t) => s + parseFloat(t.amount || 0), 0);
+      const txnLines = txns.slice(0, 5).map(t => `- ${t.operation_type || 'txn'}: $${t.amount} (${(t.created_at || '').slice(0,10)})`).join('\n');
+      setCommand(`Full fraud investigation - user account review.
+USER: ${user.email || query} (${user.first_name || ''} ${user.last_name || ''})
+Account age: ${age != null ? age + ' days' : 'Unknown'} | Status: ${user.status || 'Unknown'}
+KYC: Tier ${user.tier_level != null ? user.tier_level : '?'} | ID verified: ${user.document_verified ? 'Yes' : 'No'} | Watchlist: ${user.watchlist_verified ? 'Clear' : 'Pending'}
+Platform risk: ${risk.risk_level || 'Unknown'} (score: ${risk.score != null ? risk.score : '?'})
+TRANSACTIONS (last 30 days):
+- Count: ${txns.length} | Total: $${total.toFixed(2)}
+${txnLines}
+
+Analyze from a fraud perspective. Consider: account age, KYC gaps, transaction patterns, risk score.
+
+REQUIRED OUTPUT:
+VERDICT: [FRAUD_RISK / MONITOR / CLEAR]
+CONFIDENCE: [0-100]%
+KEY SIGNALS: [specific red flags or green flags from the data above]
+PATTERN: [structuring / mule / velocity / account-takeover / none — based on actual data]
+REASONING: [2-3 sentences citing specific data points]
+NEXT STEP: [one action, one owner]`);
+    } catch (err) { setUserData({ error: err.message }); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5 mb-5">
+      <p className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">Investigate User</p>
+      <p className="text-xs text-gray-600 mb-3">Enter any user email or account ID for a full fraud overview and verdict</p>
+      <form onSubmit={doInvestigate} className="flex gap-2 mb-3">
+        <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="user@email.com or account UUID..."
+          className="flex-1 px-4 py-2.5 rounded-xl border-2 border-red-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
+        <button type="submit" disabled={loading || !query.trim()}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+          style={{ background: '#DC2626' }}>
+          {loading ? '...' : 'Investigate'}
+        </button>
+      </form>
+      {userData && !userData.error && userData.user && !userData.user.note && (
+        <div className="rounded-xl bg-white border border-red-100 p-3 mb-3 grid grid-cols-3 gap-3">
+          {[
+            ['Age', userData.user.registered_at ? Math.floor((Date.now()-new Date(userData.user.registered_at))/86400000)+'d' : '—'],
+            ['Risk', userData.risk?.risk_level || '—'],
+            ['Status', userData.user.status || '—'],
+            ['ID', userData.user.document_verified ? 'Verified' : 'Not verified'],
+            ['Watchlist', userData.user.watchlist_verified ? 'Clear' : 'Pending'],
+            ['30d txns', (userData.transactions || []).length],
+          ].map(([l, v]) => (
+            <div key={l}>
+              <p className="text-[10px] text-gray-400 uppercase">{l}</p>
+              <p className="text-xs font-medium text-gray-800">{v}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {command && (
+        <VigiaResponse command={command} portalType="fraud"
+          resourceId="user-investigate"
+          label="Get Full Fraud Overview and Verdict" />
+      )}
+      {userData?.error && <p className="text-sm text-red-600 mt-2">{userData.error}</p>}
+      {userData?.user?.note && <p className="text-sm text-amber-700 mt-2 bg-amber-50 rounded p-2">{userData.user.note}</p>}
+    </div>
+  );
+}
+
+// -- PatternCatcher --
+function PatternCatcher() {
+  const [patterns, setPatterns] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [lastRun, setLastRun] = React.useState(null);
+  const [open, setOpen] = React.useState(false);
+
+  const runAnalysis = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/fraud/patterns', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('vigia_token')}` }
+      });
+      const d = await r.json();
+      setPatterns(d);
+      setLastRun(new Date().toLocaleTimeString());
+    } catch (err) { setPatterns({ error: err.message }); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    runAnalysis();
+    const iv = setInterval(runAnalysis, 3600000);
+    return () => clearInterval(iv);
+  }, [runAnalysis]);
+
+  const signals = (patterns?.signals) || [];
+  const urgentCount = signals.filter(s => s.severity === 'HIGH').length;
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-white overflow-hidden mb-5">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-amber-50 transition-colors">
+        <div className="flex items-center gap-3">
+          <span className="text-xl">📡</span>
+          <div className="text-left">
+            <p className="font-semibold text-gray-900 text-sm">
+              Fraud Pattern Signals
+              {urgentCount > 0 && (
+                <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">{urgentCount} HIGH</span>
+              )}
+              {loading && <span className="ml-2 text-xs text-gray-400">scanning...</span>}
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Elliptic · Kount · ClickHouse · {lastRun ? `Updated ${lastRun}` : 'Loading...'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={e => { e.stopPropagation(); runAnalysis(); }}
+            className="text-xs text-amber-600 hover:text-amber-800 font-medium">Refresh</button>
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-amber-100 p-4">
+          {loading && !patterns && (
+            <div className="space-y-2">
+              {Array(3).fill(0).map((_, i) => <div key={i} className="h-12 bg-amber-50 rounded animate-pulse" />)}
+            </div>
+          )}
+          {patterns?.error && <p className="text-sm text-red-500 p-2">{patterns.error}</p>}
+          {signals.length > 0 && (
+            <div className="space-y-2">
+              {signals.map((s, i) => (
+                <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border ${
+                  s.severity === 'HIGH' ? 'border-red-200 bg-red-50' :
+                  s.severity === 'MEDIUM' ? 'border-amber-200 bg-amber-50' :
+                  'border-gray-200 bg-gray-50'}`}>
+                  <span className="text-lg flex-shrink-0 mt-0.5">
+                    {s.severity === 'HIGH' ? '🚨' : s.severity === 'MEDIUM' ? '⚠️' : '📊'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">{s.title}</p>
+                    <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{s.description}</p>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <span className="text-[10px] font-bold text-gray-500">{s.count} accounts</span>
+                      <span className="text-[10px] text-gray-400">{s.source}</span>
+                      {s.trend && <span className="text-[10px] font-medium text-red-600">{s.trend}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {signals.length === 0 && !loading && !patterns?.error && (
+            <p className="text-sm text-gray-400 text-center py-4">No unusual patterns detected in current data</p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-3 text-center">
+            Signals are informational — not auto-filed as cases. Fraud team reviews and acts.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Fraud Component ─────────────────────────────────────────
 export default function Fraud() {
   const [cases, setCases] = useState([]);
@@ -489,7 +681,13 @@ export default function Fraud() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
 
-      {/* Search — PRIMARY */}
+      {/* Investigate User — PRIMARY */}
+      <UserInvestigatePanel />
+
+      {/* Pattern Catcher */}
+      <PatternCatcher />
+
+      {/* Search Cases — SECONDARY */}
       <div className="mb-6">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Search User or Case</p>
         <form onSubmit={doSearch} className="flex gap-2">
