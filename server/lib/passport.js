@@ -6,7 +6,7 @@ function buildGoogleStrategy() {
   return new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://vigia-production-5a0a.up.railway.app/auth/google/callback'
   }, (accessToken, refreshToken, profile, done) => {
     const email = profile.emails?.[0]?.value?.toLowerCase();
 
