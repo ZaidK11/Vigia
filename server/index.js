@@ -25,11 +25,15 @@ const vigiaApiRouter = require('./routes/vigia-api');
 const searchRouter = require('./routes/search');
 const feedbackRouter = require('./routes/feedback');
 const dashboardRouter = require('./routes/dashboard');
+const ckeRouter = require('./routes/cke');
 const { startScheduler } = require('./jobs/updateDashboard');
 
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Trust Railway's proxy (needed for correct protocol detection)
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
@@ -72,15 +76,17 @@ function requireRole(...roles) {
 // Routes
 app.use('/auth', ssoRouter);  // Google SSO
 app.use('/api/auth', authRouter);  // Token auth (fallback)
+// Support ticket endpoints — Support only; /search is shared across roles
 app.use('/api/support', requireAuth, supportRouter);
-app.use('/api/fraud', requireAuth, fraudRouter);
-app.use('/api/kyc', requireAuth, kycRouter);
-app.use('/api/tm', requireAuth, tmRouter);
-app.use('/api/audit', requireAuth, auditRouter);
+app.use('/api/fraud', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'LEADERSHIP'), fraudRouter);
+app.use('/api/kyc', requireAuth, requireRole('KYC_ANALYST', 'LEADERSHIP'), kycRouter);
+app.use('/api/tm', requireAuth, requireRole('TM_ANALYST', 'LEADERSHIP'), tmRouter);
+app.use('/api/audit', requireAuth, requireRole('LEADERSHIP'), auditRouter);
 app.use('/api/vigia', requireAuth, vigiaApiRouter);
 app.use('/api/search', requireAuth, searchRouter);    // unified search — 4 protocols
 app.use('/api/feedback', requireAuth, feedbackRouter); // verdict feedback loop
-app.use('/api/dashboard', requireAuth, dashboardRouter); // compliance leadership dashboard
+app.use('/api/dashboard', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance only
+app.use('/api/cke', requireAuth, requireRole('LEADERSHIP'), ckeRouter); // CKE bridge — Leadership only
 
 // Serve React static build
 app.use(express.static(path.join(__dirname, 'public')));
@@ -118,6 +124,16 @@ app.get('/api/health', (req, res) => {
     service: 'VIGÍA Compliance Portal',
     version: '1.0.0',
     timestamp: new Date().toISOString()
+  });
+});
+
+// SSO diagnostic (non-sensitive — just shows if vars are set, not the values)
+app.get('/api/health/sso', (req, res) => {
+  res.json({
+    google_client_id_set: !!process.env.GOOGLE_CLIENT_ID,
+    google_client_secret_set: !!process.env.GOOGLE_CLIENT_SECRET,
+    google_client_id_prefix: process.env.GOOGLE_CLIENT_ID?.slice(0, 12) + '...' || 'not set',
+    sso_ready: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
   });
 });
 

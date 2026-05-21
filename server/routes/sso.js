@@ -9,19 +9,35 @@ router.get('/google', (req, res, next) => {
   if (!process.env.GOOGLE_CLIENT_ID) {
     return res.redirect('/login?error=sso_not_configured');
   }
-  passport.authenticate('google', { scope: ['profile', 'email'], hd: 'airtm.io' })(req, res, next);
+
+  // Re-init if the strategy wasn't loaded at startup (env vars added after boot)
+  try {
+    passport.reinitGoogle();
+  } catch (e) {
+    console.warn('[SSO] reinitGoogle failed:', e.message);
+  }
+
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    hd: 'airtm.io'
+  })(req, res, next);
 });
 
 // GET /auth/google/callback — Google redirects here
 router.get('/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login?error=unauthorized' }),
+  (req, res, next) => {
+    // Re-init if needed
+    try { passport.reinitGoogle(); } catch {}
+    passport.authenticate('google', { failureRedirect: '/login?error=unauthorized' })(req, res, next);
+  },
   (req, res) => {
-    // Issue a JWT-style token for the React app to use
     const user = req.user;
+    if (!user) return res.redirect('/login?error=unauthorized');
+
     const SECRET = process.env.SESSION_SECRET || 'vigia-compliance-portal-2026';
     const token = Buffer.from(`${user.email}:${SECRET}:${Date.now()}`).toString('base64');
 
-    // Redirect to frontend with token in query string (SPA picks it up)
+    // Redirect to SPA with token + user data
     res.redirect(`${FRONTEND_URL}/?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`);
   }
 );
@@ -33,7 +49,7 @@ router.get('/logout', (req, res) => {
   });
 });
 
-// GET /auth/me — check session
+// GET /auth/me
 router.get('/me', (req, res) => {
   if (req.isAuthenticated()) {
     res.json({ user: req.user });

@@ -36,7 +36,7 @@ router.get('/applications', async (req, res) => {
     FROM analytics_compliance.stg_dodrio_persona_inquiries
     WHERE inquiry_status IN ('pending', 'needs_review', 'created', 'failed', 'waiting')
     ORDER BY created_at ASC
-    LIMIT 50
+    LIMIT 15
   `);
 
   const applications = rows.map(r => ({
