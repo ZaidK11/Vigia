@@ -112,10 +112,15 @@ router.get('/case/:id', async (req, res) => {
 
   const [txns, riskRow, userRow] = userId ? await Promise.all([
     ch.query(`
-      SELECT id, airtm_user_id, status, amount, operation_type, created_at
-      FROM data_lake.payments_kecleon_operations
-      WHERE airtm_user_id = '${userId}'
-        AND _peerdb_is_deleted = 0
+      SELECT
+        trx_id        AS id,
+        user_id       AS airtm_user_id,
+        status,
+        amount_usd    AS amount,
+        trx_type      AS operation_type,
+        created_at
+      FROM analytics_finance.fact_trx
+      WHERE user_id = '${userId}'
         AND created_at >= now() - INTERVAL 90 DAY
       ORDER BY created_at DESC
       LIMIT 50
