@@ -35,12 +35,12 @@ const EMPLOYEES = {
   'ariel@airtm.io': { name: 'Christian Ariel Colla', department: 'Finance', title: 'Senior Accountant', role: 'SUPPORT_ANALYST' },
   'christian@airtm.io': { name: 'Christian Esteban Canahuire Cabello', department: 'Tech', title: 'Senior Software Engineer (Android)', role: 'SUPPORT_ANALYST' },
   'cicero@airtm.io': { name: 'Cicero Augusto De Souza Camargo', department: 'Tech', title: 'Senior Software Engineer (iOS)', role: 'SUPPORT_ANALYST' },
-  'erika@airtm.io': { name: 'Claudia Erika Martinez Merino', department: 'Compliance', title: 'KYC Global Manager', role: 'KYC_ANALYST' },
+  'erika@airtm.io': { name: 'Claudia Erika Martinez Merino', department: 'Compliance', title: 'KYC Global Manager', role: 'COMPLIANCE_MANAGER' },
   'cristina@airtm.io': { name: 'Cristina Rodriguez Jordan', department: 'Growth & Mktg', title: 'Marketing Operations Coordinator', role: 'SUPPORT_ANALYST' },
   'cristobal@airtm.io': { name: 'Cristobal Galguera Ortega', department: 'Product', title: 'Senior Product Manager', role: 'SUPPORT_ANALYST' },
   'hoangvu@airtm.io': { name: 'Dang Hoang Vu Tran', department: 'CommOps', title: 'Support Agent', role: 'SUPPORT_ANALYST' },
   'danielaperez@airtm.io': { name: 'Daniela Sarai Perez Carvajal', department: 'Growth & Mktg', title: 'Growth Marketing Associate Analyst', role: 'SUPPORT_ANALYST' },
-  'danielbenjamin@airtm.io': { name: 'Daniel Benjamin Almaraz Marroquín', department: 'Compliance', title: '1st Level Compliance Lead', role: 'KYC_ANALYST' },
+  'danielbenjamin@airtm.io': { name: 'Daniel Benjamin Almaraz Marroquín', department: 'Compliance', title: '1st Level Compliance Lead', role: 'COMPLIANCE_MANAGER' },
   'danielenrique@airtm.io': { name: 'Daniel Enrique De La Cruz Villegas', department: 'Marketplace', title: 'Marketplace Ops Associate', role: 'SUPPORT_ANALYST' },
   'danielq@airtm.io': { name: 'Daniel Quintero', department: 'Finance', title: 'Senior Accountant', role: 'SUPPORT_ANALYST' },
   'diegopels@airtm.io': { name: 'Diego Alan Pels', department: 'Sales', title: 'Account Manager', role: 'SUPPORT_ANALYST' },
@@ -110,7 +110,7 @@ const EMPLOYEES = {
   'adesola@airtm.io': { name: 'Olaleye Adesola Aanuoluwapo', department: 'CommOps', title: 'Senior Support Agent', role: 'SUPPORT_ANALYST' },
   'omar@airtm.io': { name: 'Omar Isea', department: 'Compliance', title: 'Head of Platform Safety', role: 'LEADERSHIP' },
   'paolah@airtm.io': { name: 'Paola Hernandez', department: 'Compliance', title: 'Fraud Analyst', role: 'FRAUD_INVESTIGATOR' },
-  'paula@airtm.io': { name: 'Paula Suarez', department: 'Compliance', title: 'Regional Compliance Officer', role: 'KYC_ANALYST' },
+  'paula@airtm.io': { name: 'Paula Suarez', department: 'Compliance', title: 'Regional Compliance Officer', role: 'COMPLIANCE_MANAGER' },
   'quynh@airtm.io': { name: 'Pham Thi Ngoc Quynh', department: 'CommOps', title: 'Subject Matter Expert', role: 'SUPPORT_ANALYST' },
   'rafael@airtm.io': { name: 'Rafael Martins Duster', department: 'Tech', title: 'Senior Software Engineer (Backend)', role: 'SUPPORT_ANALYST' },
   'rainer@airtm.io': { name: 'Rainer Josue Bonilla Trochez', department: 'Tech', title: 'Software Engineer (Backend)', role: 'SUPPORT_ANALYST' },
@@ -144,6 +144,8 @@ const EMPLOYEES = {
 
 const ROLE_PORTALS = {
   'LEADERSHIP': ['support', 'fraud', 'kyc', 'tm', 'leadership', 'dashboard'],
+  // All portals like LEADERSHIP but without Ask Vigía (AI chat is LEADERSHIP-only)
+  'COMPLIANCE_MANAGER': ['support', 'fraud', 'kyc', 'tm', 'leadership', 'dashboard'],
   'FRAUD_INVESTIGATOR': ['fraud', 'dashboard'],
   'KYC_ANALYST': ['kyc', 'dashboard'],
   'TM_ANALYST': ['tm', 'dashboard'],

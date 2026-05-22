@@ -15,16 +15,16 @@ export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 const PORTAL_ROLES = {
-  // Support: Support team + Leadership (Zaid/Laura need visibility)
-  support: ['SUPPORT_ANALYST', 'LEADERSHIP'],
-  // Fraud / KYC / TM: Compliance team + Leadership
-  fraud: ['FRAUD_INVESTIGATOR', 'LEADERSHIP'],
-  kyc: ['KYC_ANALYST', 'LEADERSHIP'],
-  tm: ['TM_ANALYST', 'LEADERSHIP'],
-  // Dashboard: All compliance roles + Leadership
-  dashboard: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'],
-  // Leadership Overview: Leadership only
-  leadership: ['LEADERSHIP']
+  // Support: Support team + Leadership + Compliance Managers
+  support: ['SUPPORT_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  // Fraud / KYC / TM: Compliance team + Leadership + Compliance Managers
+  fraud: ['FRAUD_INVESTIGATOR', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  kyc: ['KYC_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  tm: ['TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  // Dashboard: All compliance roles + Leadership + Compliance Managers
+  dashboard: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  // Leadership Overview: Leadership + Compliance Managers (Ask Vigía chat remains LEADERSHIP-only)
+  leadership: ['LEADERSHIP', 'COMPLIANCE_MANAGER']
 };
 
 function ProtectedRoute({ children, portal }) {
