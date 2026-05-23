@@ -115,16 +115,18 @@ function SupportDash() {
   const [filters, setFilters] = useState({ date_from: dateFrom(30), date_to: TODAY, compliance_only: 'false' });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
       const res = await api.get(`/analytics/support/metrics?${params}`);
+      if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setError(e.message); }
     setLoading(false);
   }, [filters]);
 
@@ -160,7 +162,9 @@ function SupportDash() {
 
       {updatedAt && <div className="text-xs text-gray-600 mb-4">Updated {updatedAt.toLocaleTimeString()}</div>}
 
+      {error && <div className="text-red-400 text-sm py-4 px-4 bg-red-900/20 border border-red-700/30 rounded-xl mb-4">⚠️ {error}</div>}
       {!d && loading && <div className="text-gray-500 text-sm py-12 text-center">Loading support metrics…</div>}
+      {!d && !loading && !error && <div className="text-gray-500 text-sm py-12 text-center">No data — try a different date range.</div>}
       {d && <>
         {/* Key stats */}
         <SectionHead title="Overview" />
@@ -261,16 +265,18 @@ function KycDash() {
   const [filters, setFilters] = useState({ date_from: dateFrom(30), date_to: TODAY });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
       const res = await api.get(`/analytics/kyc/metrics?${params}`);
+      if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setError(e.message); }
     setLoading(false);
   }, [filters]);
 
@@ -293,7 +299,9 @@ function KycDash() {
       ]} />
 
       {updatedAt && <div className="text-xs text-gray-600 mb-4">Updated {updatedAt.toLocaleTimeString()}</div>}
+      {error && <div className="text-red-400 text-sm py-4 px-4 bg-red-900/20 border border-red-700/30 rounded-xl mb-4">⚠️ {error}</div>}
       {!d && loading && <div className="text-gray-500 text-sm py-12 text-center">Loading KYC metrics…</div>}
+      {!d && !loading && !error && <div className="text-gray-500 text-sm py-12 text-center">No data — try a different date range.</div>}
 
       {d && <>
         <SectionHead title="Overview" />
@@ -393,16 +401,18 @@ function TmDash() {
   const [filters, setFilters] = useState({ date_from: dateFrom(30), date_to: TODAY });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
       const res = await api.get(`/analytics/tm/metrics?${params}`);
+      if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setError(e.message); }
     setLoading(false);
   }, [filters]);
 
@@ -433,7 +443,9 @@ function TmDash() {
       ]} />
 
       {updatedAt && <div className="text-xs text-gray-600 mb-4">Updated {updatedAt.toLocaleTimeString()}</div>}
+      {error && <div className="text-red-400 text-sm py-4 px-4 bg-red-900/20 border border-red-700/30 rounded-xl mb-4">⚠️ {error}</div>}
       {!d && loading && <div className="text-gray-500 text-sm py-12 text-center">Loading TM metrics…</div>}
+      {!d && !loading && !error && <div className="text-gray-500 text-sm py-12 text-center">No data — try a different date range.</div>}
 
       {d && <>
         <SectionHead title="Overview" />

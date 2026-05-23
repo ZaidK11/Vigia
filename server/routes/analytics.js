@@ -113,6 +113,7 @@ router.get('/support/metrics', async (req, res) => {
     let totalFirstResponseMin = 0, countWithResponse = 0;
     let totalResolutionHr = 0, countResolved = 0;
     let slaBreached = 0, slaTotal = 0;
+    // Note: slaTotal/slaBreached tracked at top level AND per-agent
 
     for (const t of tickets) {
       const statusStr = statusMap[t.status] || 'unknown';
@@ -205,7 +206,7 @@ router.get('/support/metrics', async (req, res) => {
       first_response_avg_min: countWithResponse ? Math.round(totalFirstResponseMin / countWithResponse) : null,
       resolution_avg_hr: countResolved ? parseFloat((totalResolutionHr / countResolved).toFixed(1)) : null,
       sla_pct: slaTotal ? Math.round(((slaTotal - slaBreached) / slaTotal) * 100) : null,
-      sla_total, sla_breached,
+      sla_total: slaTotal, sla_breached: slaBreached,
       by_agent: agentList,
       top_categories: topCategories,
       trend: trendArr,
@@ -441,7 +442,7 @@ router.get('/tm/metrics', async (req, res) => {
       by_rule: ruleList,
       by_analyst: analystList,
       sla_pct: slaTotal ? Math.round(((slaTotal - slaBreached) / slaTotal) * 100) : null,
-      sla_total, sla_breached,
+      sla_total: slaTotal, sla_breached: slaBreached,
       false_positive_pct: closedCount ? Math.round((falsePosCount / closedCount) * 100) : null,
       avg_investigation_days: countDays ? parseFloat((totalDays / countDays).toFixed(1)) : null,
       trend: Object.entries(trend).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,v])=>({date,...v})),

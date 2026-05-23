@@ -50,7 +50,7 @@ router.get('/cases', async (req, res) => {
       FROM analytics_compliance.fact_ar_issues
       WHERE current_status IN ('New Investigation', 'New', 'Monitoring', 'Limited', 'Ready to escalate')
         AND is_closed = 0
-        AND (alert_category IN ('manual_screening', 'active_tm_rule') OR arrayExists(x -> x IN ('Fraud','Banned'), risk_flags))
+        AND (alert_category IN ('manual_screening') OR arrayExists(x -> x IN ('Fraud','Banned'), risk_flags))
       ORDER BY created_at ASC
       LIMIT 50
     `).catch(() => []),
