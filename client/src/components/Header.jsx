@@ -3,12 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
 
 const TABS = [
-  { path: '/support',    label: '🎧 Support',    icon: '🎧', roles: ['SUPPORT_ANALYST', 'LEADERSHIP'] },
-  { path: '/fraud',      label: '🔍 Fraud',      icon: '🔍', roles: ['FRAUD_INVESTIGATOR', 'LEADERSHIP'] },
-  { path: '/kyc',        label: '🪪 KYC',         icon: '🪪', roles: ['KYC_ANALYST', 'LEADERSHIP'] },
-  { path: '/tm',         label: '📡 TM Alerts',  icon: '📡', roles: ['TM_ANALYST', 'LEADERSHIP'] },
-  { path: '/dashboard',  label: '📊 Dashboard',  icon: '📊', roles: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'] },
-  { path: '/leadership', label: '⚖️ Overview',   icon: '⚖️', roles: ['LEADERSHIP'] },
+  { path: '/support',    label: '🎧 Support',    icon: '🎧', roles: ['SUPPORT_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/fraud',      label: '🔍 Fraud',      icon: '🔍', roles: ['FRAUD_INVESTIGATOR', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/kyc',        label: '🪪 KYC',         icon: '🪪', roles: ['KYC_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/tm',         label: '📡 TM Alerts',  icon: '📡', roles: ['TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/dashboard',  label: '📊 Dashboard',  icon: '📊', roles: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/analytics',  label: '📈 Analytics',  icon: '📈', roles: ['SUPPORT_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'] },
+  { path: '/leadership', label: '⚖️ Overview',   icon: '⚖️', roles: ['LEADERSHIP', 'COMPLIANCE_MANAGER'] },
 ];
 
 export default function Header() {

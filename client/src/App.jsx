@@ -9,6 +9,7 @@ import KYC from './pages/KYC.jsx';
 import TM from './pages/TM.jsx';
 import Leadership from './pages/Leadership.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Analytics from './pages/Analytics.jsx';
 import Header from './components/Header.jsx';
 
 export const AuthContext = createContext(null);
@@ -23,6 +24,8 @@ const PORTAL_ROLES = {
   tm: ['TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
   // Dashboard: All compliance roles + Leadership + Compliance Managers
   dashboard: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+  // Analytics: All compliance roles + Leadership + Compliance Managers
+  analytics: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER', 'SUPPORT_ANALYST'],
   // Leadership Overview: Leadership + Compliance Managers (Ask Vigía chat remains LEADERSHIP-only)
   leadership: ['LEADERSHIP', 'COMPLIANCE_MANAGER']
 };
@@ -106,6 +109,7 @@ export default function App() {
             <Route path="/tm" element={<ProtectedRoute portal="tm"><TM /></ProtectedRoute>} />
             <Route path="/leadership" element={<ProtectedRoute portal="leadership"><Leadership /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute portal="dashboard"><Dashboard /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute portal="analytics"><Analytics /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

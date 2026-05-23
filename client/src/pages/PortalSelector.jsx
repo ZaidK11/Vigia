@@ -50,6 +50,15 @@ const PORTALS = [
     bg: '#ECFDF5',
   },
   {
+    path: '/analytics',
+    icon: '📈',
+    title: 'Analytics',
+    desc: 'Live SLA metrics, agent performance, approval rates, false positive analysis.',
+    roles: ['SUPPORT_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+    color: '#6366F1',
+    bg: '#EEF2FF',
+  },
+  {
     path: '/leadership',
     icon: '⚖️',
     title: 'Compliance Overview',
