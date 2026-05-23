@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import VigiaResponse from '../components/VigiaResponse.jsx';
+import EddButton from '../components/EddButton.jsx';
+import { useAuth } from '../App.jsx';
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -77,6 +79,7 @@ Do NOT reveal specific reasons (regulatory requirement). Keep it under 80 words.
 
 // ── Application Detail ────────────────────────────────────────────
 function AppDetail({ appId, onClose }) {
+  const { user } = useAuth();
   const [appData, setAppData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [verdict, setVerdict] = useState(null); // APPROVE | REQUEST_DOCS | REJECT
@@ -150,6 +153,12 @@ function AppDetail({ appId, onClose }) {
           </div>
           <p className="text-xs text-gray-400 mt-0.5">{app.id} · {app.country || '—'} · {app.inquiryStatus}</p>
         </div>
+        <EddButton
+          subject={{ firstName: (app.name||'').split(' ')[0]||'', lastName: (app.name||'').split(' ').slice(1).join(' ')||app.name||'', country: app.country||'' }}
+          caseId={appId}
+          analystId={user?.email}
+          analystName={user?.name}
+        />
       </div>
 
       {/* Application data panel */}

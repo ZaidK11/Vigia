@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import VigiaResponse from '../components/VigiaResponse.jsx';
+import EddButton from '../components/EddButton.jsx';
+import { useAuth } from '../App.jsx';
 
 const PRIORITY_LABEL = ['', 'Low', 'Medium', 'High', 'Urgent'];
 const STATUS_LABEL = { 2: 'Open', 3: 'Pending', 4: 'Resolved', 5: 'Closed', 6: 'Waiting' };
@@ -32,6 +34,7 @@ const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 
 
 // ── Ticket Detail Panel ─────────────────────────────────────────
 function TicketDetail({ ticketId, onClose }) {
+  const { user: authUser } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
@@ -136,6 +139,16 @@ function TicketDetail({ ticketId, onClose }) {
             {ticket.requester?.name || ticket.requester?.email} · {timeAgo(ticket.created_at)}
           </p>
         </div>
+        <EddButton
+          subject={{
+            firstName: (ticket.requester?.name||'').split(' ')[0]||'',
+            lastName: (ticket.requester?.name||'').split(' ').slice(1).join(' ')||'',
+            country: ''
+          }}
+          caseId={`FD-${ticket.id}`}
+          analystId={authUser?.email}
+          analystName={authUser?.name}
+        />
       </div>
 
       {/* 1. What's the issue */}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import VigiaResponse from '../components/VigiaResponse.jsx';
+import EddButton from '../components/EddButton.jsx';
+import { useAuth } from '../App.jsx';
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -104,6 +106,7 @@ Provide: Recommended action (A/B/C/D), 2-sentence justification, confidence leve
 
 // ── Case Detail ──────────────────────────────────────────────────
 function CaseDetail({ caseId, onClose }) {
+  const { user } = useAuth();
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [verdict, setVerdict] = useState(null); // FRAUD | NOT_FRAUD | MONITOR
@@ -179,7 +182,7 @@ function CaseDetail({ caseId, onClose }) {
       {/* Back + header */}
       <div className="flex items-center gap-2 mb-5">
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">←</button>
-        <div>
+        <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-gray-900 text-sm">{c.id}</span>
             <PriorityBadge status={c.status} riskFlags={networkAnalysis?.riskFlags} screeningFlags={networkAnalysis?.screeningFlags} />
@@ -191,6 +194,12 @@ function CaseDetail({ caseId, onClose }) {
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{c.summary?.slice(0, 80)}</p>
         </div>
+        <EddButton
+          subject={{ firstName: '', lastName: c.userId || '', country: '' }}
+          caseId={c.id}
+          analystId={user?.email}
+          analystName={user?.name}
+        />
       </div>
 
       {/* Case data summary */}

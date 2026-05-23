@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import VigiaResponse from '../components/VigiaResponse.jsx';
+import EddButton from '../components/EddButton.jsx';
+import { useAuth } from '../App.jsx';
 
 function getToken() { return localStorage.getItem('vigia_token'); }
 const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
@@ -93,6 +95,7 @@ Write 2-3 sentences documenting the closure rationale and any compensating contr
 
 // ── Alert Detail ──────────────────────────────────────────────────
 function AlertDetail({ alertId, onClose }) {
+  const { user } = useAuth();
   const [alertData, setAlertData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [verdict, setVerdict] = useState(null); // FILE_SAR | MONITOR | ESCALATE | CLOSE
@@ -181,6 +184,12 @@ function AlertDetail({ alertId, onClose }) {
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{alert.summary?.slice(0, 80)}</p>
         </div>
+        <EddButton
+          subject={{ firstName: '', lastName: alert.userId || alert.id, country: '' }}
+          caseId={alert.id}
+          analystId={user?.email}
+          analystName={user?.name}
+        />
       </div>
 
       {/* SAR deadline — prominent when urgent */}
