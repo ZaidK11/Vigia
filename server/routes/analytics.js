@@ -328,16 +328,17 @@ router.get('/tm/metrics', async (req, res) => {
     const slaFilter       = req.query.sla_status || null; // on_track|at_risk|overdue|any
     const analystFilter   = req.query.analyst_id || null;
 
-    // Pull AR cases from ClickHouse
+    // Pull AR cases from ClickHouse — JOIN with time_in_status for avg days
     const rows = await ch.query(`
       SELECT
-        key, summary, current_status, alert_type, alert_category, alert_rule_code,
-        assignee, created_at, is_closed,
-        is_account_limited, days_in_status
-      FROM analytics_compliance.fact_ar_issues
-      WHERE created_at >= '${range.fromCH}'
-        AND created_at <= '${range.toCH}'
-      ORDER BY created_at DESC
+        i.key, i.summary, i.current_status, i.alert_type, i.alert_category, i.alert_rule_code,
+        i.assignee, i.created_at, i.is_closed, i.false_positive_classification,
+        i.is_account_limited,
+        dateDiff('day', toDateTime(i.created_at), now()) AS days_since_created
+      FROM analytics_compliance.fact_ar_issues i
+      WHERE i.created_at >= '${range.fromCH}'
+        AND i.created_at <= '${range.toCH}'
+      ORDER BY i.created_at DESC
       LIMIT 5000
     `);
 
@@ -381,9 +382,8 @@ router.get('/tm/metrics', async (req, res) => {
       if (r.is_closed) {
         byRule[rule].closed++;
         closedCount++;
-        // False positive: closed status indicating no suspicious activity
-        const noSusp = ['no suspicious activity','cleared','false positive','no action required'];
-        if (noSusp.some(s => st.includes(s))) {
+        // False positive: use false_positive_classification from ClickHouse
+        if (r.false_positive_classification === 'false_positive') {
           byRule[rule].false_pos++;
           falsePosCount++;
         }
@@ -397,8 +397,8 @@ router.get('/tm/metrics', async (req, res) => {
       };
       byAnalyst[analyst].assigned++;
       if (r.is_closed) byAnalyst[analyst].resolved++;
-      if (r.days_in_status) {
-        byAnalyst[analyst].total_days += parseFloat(r.days_in_status) || 0;
+      if (r.days_since_created) {
+        byAnalyst[analyst].total_days += parseFloat(r.days_since_created) || 0;
         byAnalyst[analyst].count_days++;
       }
       byAnalyst[analyst].sla_total++;
@@ -418,7 +418,7 @@ router.get('/tm/metrics', async (req, res) => {
       if (slaStatus === 'overdue') slaBreached++;
 
       // Avg investigation days
-      if (r.days_in_status) { totalDays += parseFloat(r.days_in_status) || 0; countDays++; }
+      if (r.days_since_created) { totalDays += parseFloat(r.days_since_created) || 0; countDays++; }
     }
 
     // Compute rule false positive pcts
@@ -480,13 +480,14 @@ router.get('/:section/export/csv', async (req, res) => {
       filename = `vigia_kyc_export_${range.from.toISOString().slice(0,10)}.csv`;
     } else if (section === 'tm') {
       const data = await ch.query(`
-        SELECT key, current_status, alert_type, alert_rule_code, assignee, created_at, is_closed, days_in_status
+        SELECT key, current_status, alert_type, alert_rule_code, assignee, created_at, is_closed,
+             dateDiff('day', toDateTime(created_at), now()) AS days_since_created
         FROM analytics_compliance.fact_ar_issues
         WHERE created_at >= '${range.fromCH}' AND created_at <= '${range.toCH}'
         ORDER BY created_at DESC LIMIT 5000
       `);
-      headers = ['key','status','alert_type','alert_rule','assignee','created_at','is_closed','days_in_status'];
-      rows = (data||[]).map(r => [r.key,r.current_status,r.alert_type,r.alert_rule_code,r.assignee,r.created_at,r.is_closed?'1':'0',r.days_in_status]);
+      headers = ['key','status','alert_type','alert_rule','assignee','created_at','is_closed','days_since_created'];
+      rows = (data||[]).map(r => [r.key,r.current_status,r.alert_type,r.alert_rule_code,r.assignee,r.created_at,r.is_closed?'1':'0',r.days_since_created]);
       filename = `vigia_tm_export_${range.from.toISOString().slice(0,10)}.csv`;
     } else {
       return res.status(400).json({ error: 'Unknown section' });

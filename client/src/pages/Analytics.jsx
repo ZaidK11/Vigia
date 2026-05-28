@@ -122,7 +122,7 @@ function SupportDash() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
-      const res = await api.get(`/analytics/support/metrics?${params}`);
+      const res = await api.get(`/api/analytics/support/metrics?${params}`);
       if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());
@@ -272,7 +272,7 @@ function KycDash() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
-      const res = await api.get(`/analytics/kyc/metrics?${params}`);
+      const res = await api.get(`/api/analytics/kyc/metrics?${params}`);
       if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());
@@ -408,7 +408,7 @@ function TmDash() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams(filters).toString();
-      const res = await api.get(`/analytics/tm/metrics?${params}`);
+      const res = await api.get(`/api/analytics/tm/metrics?${params}`);
       if (res.data.error) throw new Error(res.data.error);
       setData(res.data);
       setUpdatedAt(new Date());

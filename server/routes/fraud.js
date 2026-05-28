@@ -46,13 +46,18 @@ router.get('/cases', async (req, res) => {
   const [chCases, jiraCases] = await Promise.all([
     ch.query(`
       SELECT key, summary, current_status, alert_type, alert_category,
-             assignee, created_at, is_account_limited, screening_flags, risk_flags
+             assignee, created_at, is_account_limited, screening_flags, risk_flags,
+             false_positive_classification
       FROM analytics_compliance.fact_ar_issues
       WHERE current_status IN ('New Investigation', 'New', 'Monitoring', 'Limited', 'Ready to escalate')
         AND is_closed = 0
-        AND (alert_category IN ('manual_screening') OR arrayExists(x -> x IN ('Fraud','Banned'), risk_flags))
+        AND (
+          false_positive_classification IN ('under_investigation', 'escalation_candidate', 'true_positive')
+          OR arrayExists(x -> x IN ('Fraud', 'Banned', 'ATO'), risk_flags)
+          OR arrayExists(x -> x IN ('Elliptic'), screening_flags)
+        )
       ORDER BY created_at ASC
-      LIMIT 50
+      LIMIT 100
     `).catch(() => []),
     jira.searchIssues(
       'project = AR AND status in ("New Investigation","New","Monitoring","Limited") ORDER BY created ASC',
