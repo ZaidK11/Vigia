@@ -10,6 +10,7 @@ import TM from './pages/TM.jsx';
 import Leadership from './pages/Leadership.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Analytics from './pages/Analytics.jsx';
+import RegulatoryIntel from './pages/RegulatoryIntel.jsx';
 import Header from './components/Header.jsx';
 
 export const AuthContext = createContext(null);
@@ -26,6 +27,8 @@ const PORTAL_ROLES = {
   dashboard: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
   // Analytics: All compliance roles + Leadership + Compliance Managers
   analytics: ['FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER', 'SUPPORT_ANALYST'],
+  // Regulatory Intel: All authenticated users (no role restriction)
+  regulatory: ['SUPPORT_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
   // Leadership Overview: Leadership + Compliance Managers (Ask Vigía chat remains LEADERSHIP-only)
   leadership: ['LEADERSHIP', 'COMPLIANCE_MANAGER']
 };
@@ -110,6 +113,7 @@ export default function App() {
             <Route path="/leadership" element={<ProtectedRoute portal="leadership"><Leadership /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute portal="dashboard"><Dashboard /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute portal="analytics"><Analytics /></ProtectedRoute>} />
+            <Route path="/regulatory" element={<ProtectedRoute portal="regulatory"><RegulatoryIntel /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

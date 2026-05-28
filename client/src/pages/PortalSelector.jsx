@@ -67,6 +67,15 @@ const PORTALS = [
     color: '#0F172A',
     bg: '#F8FAFC',
   },
+  {
+    path: '/regulatory',
+    icon: '🌐',
+    title: 'Regulatory Intel',
+    desc: 'Daily OFAC, FinCEN, and FATF briefings — know what changed before the market opens.',
+    roles: ['SUPPORT_ANALYST', 'FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP', 'COMPLIANCE_MANAGER'],
+    color: '#0891B2',
+    bg: '#ECFEFF',
+  },
 ];
 
 export default function PortalSelector() {
