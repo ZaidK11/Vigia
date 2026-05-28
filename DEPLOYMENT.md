@@ -51,6 +51,9 @@ GOOGLE_CALLBACK_URL=https://<your-railway-url>/auth/google/callback
 # Session
 SESSION_SECRET=<generate a random 64-char string>
 
+# Regulatory Intel Feed (Sophia posts daily briefs via this secret)
+REGULATORY_FEED_SECRET=a87ba84d8ebf1478f5ac27a8f0bb69b8d606ca6c092ed2d6771a6005725b6569
+
 # Runtime
 NODE_ENV=production
 PORT=3000
