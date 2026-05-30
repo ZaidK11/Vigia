@@ -12,7 +12,7 @@ const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { logAction } = require('../lib/audit');
-const { PiiGuard } = require('../lib/pii-guard/sdk/index');
+const { PiiGuard } = require('../lib/pii-guard/src/sdk/index');
 
 // ── PII Guard v2 — strips PII + proprietary identifiers before Claude sees them ──
 const piiGuard = new PiiGuard({
