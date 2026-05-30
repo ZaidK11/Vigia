@@ -154,8 +154,12 @@ function getSystemPrompt(portalType, language) {
 }
 
 // POST /api/vigia/analyze
+// suppressRestore (bool, default false): when true, tokens are NOT replaced in the
+// output delivered to the client. Useful for agents doing pure pattern analysis
+// where the model reasons on [PII_GUARD:ID:1] tokens rather than raw identifiers.
+// Compliance log entries always record real values regardless of this flag.
 router.post('/analyze', async (req, res) => {
-  const { command, portalType, resourceId, context, language } = req.body;
+  const { command, portalType, resourceId, context, language, suppressRestore } = req.body;
 
   if (!command) {
     return res.status(400).json({ error: 'command is required' });
@@ -174,21 +178,25 @@ router.post('/analyze', async (req, res) => {
 
     // Redact PII + proprietary terms before sending to Claude.
     // If structured context (ClickHouse rows, API payloads) was passed, deep-redact it
-    // with redactObject() first, then fold the redacted JSON into the prompt string.
+    // with redactObject() first — field-name rules catch aliases (client_id, account_gid, etc.)
+    // even when the value doesn't match a regex pattern.
     let promptText = command;
-    let restore;
+    let restoreFn;
     if (context && typeof context === 'object') {
-      const { redacted: redactedCtx, session, restore: restoreObj } = piiGuard.redactObject(context);
+      const { redacted: redactedCtx, session } = piiGuard.redactObject(context);
       const ctxJson = JSON.stringify(redactedCtx);
       // Further redact the combined prompt through the same session for consistency
       const redactedPrompt = session.redact(`${command}\n\nContext:\n${ctxJson}`);
       promptText = redactedPrompt;
-      restore = (t) => session.restore(t);
+      restoreFn = (t) => session.restore(t);
     } else {
       const r = piiGuard.redact(command);
       promptText = r.redacted;
-      restore = r.restore;
+      restoreFn = r.restore;
     }
+    // suppressRestore: keep tokens in output for agents doing analytical work
+    // (e.g. Sophia counting occurrences of [PII_GUARD:ID:1] across rows)
+    const restore = suppressRestore ? (t) => t : restoreFn;
 
     const stream = await client.messages.stream({
       model: MODEL,
@@ -241,8 +249,9 @@ router.post('/analyze', async (req, res) => {
 });
 
 // POST /api/vigia/analyze-sync (non-streaming, for simpler clients)
+// Accepts same suppressRestore + context flags as /analyze.
 router.post('/analyze-sync', async (req, res) => {
-  const { command, portalType, resourceId, language } = req.body;
+  const { command, portalType, resourceId, language, context, suppressRestore } = req.body;
 
   if (!command) return res.status(400).json({ error: 'command is required' });
 
@@ -250,16 +259,29 @@ router.post('/analyze-sync', async (req, res) => {
 
   try {
     // Redact PII + proprietary terms before sending to Claude.
-    const { redacted: redactedCommand, restore } = piiGuard.redact(command);
+    let promptText = command;
+    let restoreFn;
+    if (context && typeof context === 'object') {
+      const { redacted: redactedCtx, session } = piiGuard.redactObject(context);
+      const ctxJson = JSON.stringify(redactedCtx);
+      const redactedPrompt = session.redact(`${command}\n\nContext:\n${ctxJson}`);
+      promptText = redactedPrompt;
+      restoreFn = (t) => session.restore(t);
+    } else {
+      const r = piiGuard.redact(command);
+      promptText = r.redacted;
+      restoreFn = r.restore;
+    }
+    const restoreOutput = suppressRestore ? (t) => t : restoreFn;
 
     const message = await client.messages.create({
       model: MODEL,
       max_tokens: portalType === 'support' ? 512 : 1024,
       system: systemPrompt,
-      messages: [{ role: 'user', content: redactedCommand }]
+      messages: [{ role: 'user', content: promptText }]
     });
 
-    const response = restore(message.content[0]?.text || '');
+    const response = restoreOutput(message.content[0]?.text || '');
 
     logAction({
       userEmail: req.user?.email || 'unknown',
