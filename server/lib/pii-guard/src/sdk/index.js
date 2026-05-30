@@ -99,6 +99,30 @@ class PiiGuard {
   }
 
   /**
+   * Recursively redact all string values in a JSON object/array.
+   * Keys are preserved. Useful for ClickHouse result rows, API payloads, tool results.
+   * Returns a shared session so you can restore the object (or a derived string) later.
+   *
+   * @param {any} obj  - Object, array, or any value to deep-redact
+   * @returns {{ redacted: any, restore: (any) => any, session: GuardSession }}
+   *
+   * Example:
+   *   const { redacted, restore, session } = guard.redactObject(clickhouseRow);
+   *   const summary = session.redact(JSON.stringify(redacted));  // also redacts the prompt
+   *   const llmReply = await callClaude(summary);
+   *   console.log(restore(JSON.parse(session.restore(llmReply))));
+   */
+  redactObject(obj) {
+    const s = this.session();
+    const redacted = _deepRedact(obj, s);
+    return {
+      redacted,
+      session: s,
+      restore: (o) => _deepRestore(o, s),
+    };
+  }
+
+  /**
    * Dry run — inspect what would be redacted.
    * @param {string} text
    * @returns {{ redacted: string, tokens: Object, count: number }}
@@ -110,6 +134,37 @@ class PiiGuard {
 
   get template() { return this._config.template; }
   get ruleCount() { return this._rules.length; }
+}
+
+// ── Deep object helpers (used by redactObject) ─────────────────────────────
+
+function _deepRedact(obj, session) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') return session.redact(obj);
+  if (Array.isArray(obj)) return obj.map(item => _deepRedact(item, session));
+  if (typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = _deepRedact(v, session);
+    }
+    return out;
+  }
+  // numbers, booleans, etc — not PII, pass through
+  return obj;
+}
+
+function _deepRestore(obj, session) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') return session.restore(obj);
+  if (Array.isArray(obj)) return obj.map(item => _deepRestore(item, session));
+  if (typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = _deepRestore(v, session);
+    }
+    return out;
+  }
+  return obj;
 }
 
 /**
@@ -129,6 +184,12 @@ class GuardSession {
   restore(text) {
     return coreRestore(text, this._session);
   }
+
+  /** Deep-redact an object/array, reusing this session's token map. */
+  redactObject(obj) { return _deepRedact(obj, this); }
+
+  /** Deep-restore an object/array using this session's token map. */
+  restoreObject(obj) { return _deepRestore(obj, this); }
 
   streamRestorer() {
     return new StreamRestorer(this._session);

@@ -14,25 +14,34 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { logAction } = require('../lib/audit');
 const { PiiGuard } = require('../lib/pii-guard/src/sdk/index');
 
-// ── PII Guard v2 — strips PII + proprietary identifiers before Claude sees them ──
+// ── PII Guard v2 — Airtm template: strips PII + ClickHouse identifiers before Claude sees them ──
+// Config mirrors templates/airtm.yaml; loaded inline so no extra file I/O at runtime.
 const piiGuard = new PiiGuard({
   template: 'enterprise',
   custom_rules: [
-    // Company name
-    { pattern: 'Airtm', label: 'COMPANY' },
-    // Partners & vendors
-    { pattern: 'Bridges', label: 'PARTNER' },
-    { pattern: 'Elliptic', label: 'PARTNER' },
-    { pattern: 'Kount', label: 'PARTNER' },
-    { pattern: 'Persona', label: 'PARTNER' },
-    // Internal systems
-    { pattern: 'Dodrio', label: 'INTERNAL' },
-    { pattern: 'Galar', label: 'INTERNAL' },
-    { pattern: 'Onix', label: 'INTERNAL' },
-    // Keep regulatory terms visible — Claude needs them for compliance reasoning
-    { name: 'keep_regulatory', pattern: '(OFAC|FinCEN|SAR|AML|KYC|KYB|BSA|UIF|CTR)', redact: false },
+    // ── Airtm internal identifiers ────────────────────────────────────────────
+    // Device fingerprints (hex 32–64 chars) from data_lake.oauth2_onix_users
+    { name: 'device_fingerprint', source: '[a-fA-F0-9]{32,64}', label: 'DEVICE_FP' },
+
+    // Crypto wallet addresses — Elliptic / operations_silvally surface
+    { name: 'btc_address',  source: '(?:1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{39,59}', label: 'WALLET' },
+    { name: 'eth_address',  source: '0x[a-fA-F0-9]{40}', label: 'WALLET' },
+    { name: 'wallet_hex',   source: '[a-fA-F0-9]{40,64}', label: 'WALLET' },
+
+    // ── Company, partners, internal systems ───────────────────────────────────
+    { pattern: 'Airtm',    label: 'COMPANY'  },
+    { pattern: 'Bridges',  label: 'PARTNER'  },
+    { pattern: 'Elliptic', label: 'PARTNER'  },
+    { pattern: 'Kount',    label: 'PARTNER'  },
+    { pattern: 'Persona',  label: 'PARTNER'  },
+    { pattern: '(Dodrio|Galar|Onix|Kecleon|Silvally)', label: 'INTERNAL' },
+
+    // ── Regulatory passthrough — Claude needs these for compliance reasoning ──
+    { name: 'keep_regulatory', pattern: '(OFAC|FinCEN|SAR|AML|KYC|KYB|BSA|UIF|CTR|FATF|PEP|STR)', redact: false },
   ],
-  disable_builtins: ['dob'], // compliance prompts contain date ranges we need preserved
+  // dob: compliance prompts include date ranges ("last 90 days") — don't strip them
+  // us_zip: not relevant to Airtm's LATAM user base
+  disable_builtins: ['dob', 'us_zip'],
 });
 
 // Explicitly set apiKey so SDK never tries to read env or incoming headers
@@ -163,14 +172,29 @@ router.post('/analyze', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    // Redact PII + proprietary terms before sending to Claude
-    const { redacted: redactedCommand, restore } = piiGuard.redact(command);
+    // Redact PII + proprietary terms before sending to Claude.
+    // If structured context (ClickHouse rows, API payloads) was passed, deep-redact it
+    // with redactObject() first, then fold the redacted JSON into the prompt string.
+    let promptText = command;
+    let restore;
+    if (context && typeof context === 'object') {
+      const { redacted: redactedCtx, session, restore: restoreObj } = piiGuard.redactObject(context);
+      const ctxJson = JSON.stringify(redactedCtx);
+      // Further redact the combined prompt through the same session for consistency
+      const redactedPrompt = session.redact(`${command}\n\nContext:\n${ctxJson}`);
+      promptText = redactedPrompt;
+      restore = (t) => session.restore(t);
+    } else {
+      const r = piiGuard.redact(command);
+      promptText = r.redacted;
+      restore = r.restore;
+    }
 
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: maxTokens,
       system: systemPrompt,
-      messages: [{ role: 'user', content: redactedCommand }]
+      messages: [{ role: 'user', content: promptText }]
     });
 
     let fullResponse = '';
@@ -225,7 +249,7 @@ router.post('/analyze-sync', async (req, res) => {
   const systemPrompt = getSystemPrompt(portalType, language);
 
   try {
-    // Redact PII + proprietary terms before sending to Claude
+    // Redact PII + proprietary terms before sending to Claude.
     const { redacted: redactedCommand, restore } = piiGuard.redact(command);
 
     const message = await client.messages.create({
