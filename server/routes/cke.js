@@ -12,6 +12,7 @@ const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const { logAction } = require('../lib/audit');
+const airtmGuard = require('../lib/pii-guard-airtm');
 
 const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
@@ -128,7 +129,7 @@ router.post('/ask', async (req, res) => {
     return res.status(400).json({ error: 'question is required' });
   }
 
-  // Log the question
+  // Log the raw question (before redaction) — audit always gets real values
   logAction({
     userEmail,
     action: 'CKE_BRIDGE_QUESTION',
@@ -147,9 +148,23 @@ router.post('/ask', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
 
+  // ── PII Guard: single session for the entire request ──────────────
+  // One session means: same raw value → same token across the question,
+  // conversation history, tool results, and response. Claude can reason
+  // on token co-occurrence ("[ID:1] appears in 3 rows") without seeing PII.
+  const pii = airtmGuard.session();
+
+  // Redact conversation history (user turns only; assistant turns are already clean)
+  const redactedHistory = conversationHistory
+    .filter(m => m.role && m.content)
+    .map(m => ({
+      role: m.role,
+      content: m.role === 'user' ? pii.redact(m.content) : m.content,
+    }));
+
   const messages = [
-    ...conversationHistory.filter(m => m.role && m.content),
-    { role: 'user', content: question }
+    ...redactedHistory,
+    { role: 'user', content: pii.redact(question) },
   ];
 
   let fullResponse = '';
@@ -166,11 +181,12 @@ router.post('/ask', async (req, res) => {
         messages
       });
 
-      // Stream any text blocks
+      // Stream text blocks — restore tokens before sending to client
       for (const block of resp.content) {
         if (block.type === 'text') {
-          fullResponse += block.text;
-          res.write(`data: ${JSON.stringify({ text: block.text })}\n\n`);
+          const restored = pii.restore(block.text);
+          fullResponse += restored;
+          res.write(`data: ${JSON.stringify({ text: restored })}\n\n`);
         }
       }
 
@@ -182,30 +198,38 @@ router.post('/ask', async (req, res) => {
       // Handle tool use
       if (resp.stop_reason === 'tool_use') {
         const toolUseBlocks = resp.content.filter(b => b.type === 'tool_use');
-        
-        // Add assistant message with tool_use
+
+        // Add assistant message with tool_use blocks (no text to restore here)
         messages.push({ role: 'assistant', content: resp.content });
-        
-        // Execute tools and collect results
+
+        // Execute tools, deep-redact results, feed back into the same session
         const toolResults = [];
         for (const toolUse of toolUseBlocks) {
           res.write(`data: ${JSON.stringify({ tool: toolUse.name, status: 'running' })}\n\n`);
           const result = await runTool(toolUse.name, toolUse.input);
           toolsUsed.push({ name: toolUse.name, input: toolUse.input });
+
+          // Deep-redact structured results (ClickHouse rows, Freshdesk objects)
+          // using the same session — field-name rules catch aliases like client_id,
+          // account_gid, airtm_user_id even when the value isn't UUID-shaped.
+          const redactedResult = Array.isArray(result) || (result && typeof result === 'object')
+            ? pii.redactObject(result)
+            : pii.redact(String(result));
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolUse.id,
-            content: JSON.stringify(result)
+            content: JSON.stringify(redactedResult),
           });
           res.write(`data: ${JSON.stringify({ tool: toolUse.name, status: 'done', rows: Array.isArray(result) ? result.length : 1 })}\n\n`);
         }
-        
-        // Add tool results
+
+        // Add tool results to messages
         messages.push({ role: 'user', content: toolResults });
       }
     }
 
-    // Log the response
+    // Log the response (restored — audit gets real values)
     logAction({
       userEmail,
       action: 'CKE_BRIDGE_RESPONSE',

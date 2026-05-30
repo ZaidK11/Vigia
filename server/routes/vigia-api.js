@@ -12,37 +12,8 @@ const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { logAction } = require('../lib/audit');
-const { PiiGuard } = require('../lib/pii-guard/src/sdk/index');
-
-// ── PII Guard v2 — Airtm template: strips PII + ClickHouse identifiers before Claude sees them ──
-// Config mirrors templates/airtm.yaml; loaded inline so no extra file I/O at runtime.
-const piiGuard = new PiiGuard({
-  template: 'enterprise',
-  custom_rules: [
-    // ── Airtm internal identifiers ────────────────────────────────────────────
-    // Device fingerprints (hex 32–64 chars) from data_lake.oauth2_onix_users
-    { name: 'device_fingerprint', source: '[a-fA-F0-9]{32,64}', label: 'DEVICE_FP' },
-
-    // Crypto wallet addresses — Elliptic / operations_silvally surface
-    { name: 'btc_address',  source: '(?:1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{39,59}', label: 'WALLET' },
-    { name: 'eth_address',  source: '0x[a-fA-F0-9]{40}', label: 'WALLET' },
-    { name: 'wallet_hex',   source: '[a-fA-F0-9]{40,64}', label: 'WALLET' },
-
-    // ── Company, partners, internal systems ───────────────────────────────────
-    { pattern: 'Airtm',    label: 'COMPANY'  },
-    { pattern: 'Bridges',  label: 'PARTNER'  },
-    { pattern: 'Elliptic', label: 'PARTNER'  },
-    { pattern: 'Kount',    label: 'PARTNER'  },
-    { pattern: 'Persona',  label: 'PARTNER'  },
-    { pattern: '(Dodrio|Galar|Onix|Kecleon|Silvally)', label: 'INTERNAL' },
-
-    // ── Regulatory passthrough — Claude needs these for compliance reasoning ──
-    { name: 'keep_regulatory', pattern: '(OFAC|FinCEN|SAR|AML|KYC|KYB|BSA|UIF|CTR|FATF|PEP|STR)', redact: false },
-  ],
-  // dob: compliance prompts include date ranges ("last 90 days") — don't strip them
-  // us_zip: not relevant to Airtm's LATAM user base
-  disable_builtins: ['dob', 'us_zip'],
-});
+// ── PII Guard: shared Airtm singleton (config in lib/pii-guard-airtm.js) ──
+const piiGuard = require('../lib/pii-guard-airtm');
 
 // Explicitly set apiKey so SDK never tries to read env or incoming headers
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
@@ -312,19 +283,18 @@ router.post('/chat', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
 
   try {
-    // Redact user messages only (assistant messages are already clean)
-    const restoreFns = [];
+    // Single shared session across ALL messages in this conversation turn.
+    // Same raw value (e.g. a user_id) gets the same token whether it appears
+    // in message 1 or message 5 — Claude can reason on token co-occurrence.
+    const pii = piiGuard.session();
+
     const safeMessages = messages
       .filter(m => m.role && m.content)
-      .map(m => {
-        if (m.role === 'user') {
-          const { redacted, restore } = piiGuard.redact(m.content);
-          restoreFns.push(restore);
-          return { role: m.role, content: redacted };
-        }
-        return { role: m.role, content: m.content };
-      });
-    const restoreAll = (text) => restoreFns.reduce((t, fn) => fn(t), text);
+      .map(m => ({
+        role: m.role,
+        // Redact user turns; assistant turns are already token-clean from prior turns
+        content: m.role === 'user' ? pii.redact(m.content) : m.content,
+      }));
 
     const stream = await client.messages.stream({
       model: MODEL,
@@ -336,7 +306,7 @@ router.post('/chat', async (req, res) => {
     let fullText = '';
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
-        const text = restoreAll(chunk.delta.text);
+        const text = pii.restore(chunk.delta.text);
         fullText += text;
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
