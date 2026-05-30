@@ -12,6 +12,21 @@ const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { logAction } = require('../lib/audit');
+const { PiiGuard } = require('../lib/pii-guard/index');
+
+// ── PII Guard — strips PII + proprietary identifiers before Claude sees them ──
+const piiGuard = new PiiGuard({
+  terms: [
+    // Company
+    'Airtm',
+    // Partners & vendors
+    'Bridges', 'Elliptic', 'Kount', 'Persona',
+    // Internal systems
+    'Dodrio', 'Galar', 'Onix',
+  ],
+  // Disable DOB — compliance prompts contain date ranges we need preserved
+  disableBuiltins: ['dob'],
+});
 
 // Explicitly set apiKey so SDK never tries to read env or incoming headers
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
@@ -141,11 +156,14 @@ router.post('/analyze', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
+    // Redact PII + proprietary terms before sending to Claude
+    const { redacted: redactedCommand, restore } = piiGuard.redact(command);
+
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: maxTokens,
       system: systemPrompt,
-      messages: [{ role: 'user', content: command }]
+      messages: [{ role: 'user', content: redactedCommand }]
     });
 
     let fullResponse = '';
@@ -154,9 +172,12 @@ router.post('/analyze', async (req, res) => {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
         const text = chunk.delta.text;
         fullResponse += text;
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        res.write(`data: ${JSON.stringify({ text: restore(text) })}\n\n`);
       }
     }
+
+    // Restore any remaining tokens in full response
+    fullResponse = restore(fullResponse);
 
     const elapsed = Date.now() - startTime;
 
@@ -197,14 +218,17 @@ router.post('/analyze-sync', async (req, res) => {
   const systemPrompt = getSystemPrompt(portalType, language);
 
   try {
+    // Redact PII + proprietary terms before sending to Claude
+    const { redacted: redactedCommand, restore } = piiGuard.redact(command);
+
     const message = await client.messages.create({
       model: MODEL,
       max_tokens: portalType === 'support' ? 512 : 1024,
       system: systemPrompt,
-      messages: [{ role: 'user', content: command }]
+      messages: [{ role: 'user', content: redactedCommand }]
     });
 
-    const response = message.content[0]?.text || '';
+    const response = restore(message.content[0]?.text || '');
 
     logAction({
       userEmail: req.user?.email || 'unknown',
@@ -235,20 +259,33 @@ router.post('/chat', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
 
   try {
+    // Redact user messages only (assistant messages are already clean)
+    const restoreFns = [];
+    const safeMessages = messages
+      .filter(m => m.role && m.content)
+      .map(m => {
+        if (m.role === 'user') {
+          const { redacted, restore } = piiGuard.redact(m.content);
+          restoreFns.push(restore);
+          return { role: m.role, content: redacted };
+        }
+        return { role: m.role, content: m.content };
+      });
+    const restoreAll = (text) => restoreFns.reduce((t, fn) => fn(t), text);
+
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: 2048,
       system: COMPLIANCE_SYSTEM_PROMPT,
-      messages: messages
-        .filter(m => m.role && m.content)
-        .map(m => ({ role: m.role, content: m.content }))
+      messages: safeMessages,
     });
 
     let fullText = '';
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
-        fullText += chunk.delta.text;
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+        const text = restoreAll(chunk.delta.text);
+        fullText += text;
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
     }
 
