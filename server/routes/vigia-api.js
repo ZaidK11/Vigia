@@ -12,20 +12,27 @@ const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { logAction } = require('../lib/audit');
-const { PiiGuard } = require('../lib/pii-guard/index');
+const { PiiGuard } = require('../lib/pii-guard/sdk/index');
 
-// ── PII Guard — strips PII + proprietary identifiers before Claude sees them ──
+// ── PII Guard v2 — strips PII + proprietary identifiers before Claude sees them ──
 const piiGuard = new PiiGuard({
-  terms: [
-    // Company
-    'Airtm',
+  template: 'enterprise',
+  custom_rules: [
+    // Company name
+    { pattern: 'Airtm', label: 'COMPANY' },
     // Partners & vendors
-    'Bridges', 'Elliptic', 'Kount', 'Persona',
+    { pattern: 'Bridges', label: 'PARTNER' },
+    { pattern: 'Elliptic', label: 'PARTNER' },
+    { pattern: 'Kount', label: 'PARTNER' },
+    { pattern: 'Persona', label: 'PARTNER' },
     // Internal systems
-    'Dodrio', 'Galar', 'Onix',
+    { pattern: 'Dodrio', label: 'INTERNAL' },
+    { pattern: 'Galar', label: 'INTERNAL' },
+    { pattern: 'Onix', label: 'INTERNAL' },
+    // Keep regulatory terms visible — Claude needs them for compliance reasoning
+    { name: 'keep_regulatory', pattern: '(OFAC|FinCEN|SAR|AML|KYC|KYB|BSA|UIF|CTR)', redact: false },
   ],
-  // Disable DOB — compliance prompts contain date ranges we need preserved
-  disableBuiltins: ['dob'],
+  disable_builtins: ['dob'], // compliance prompts contain date ranges we need preserved
 });
 
 // Explicitly set apiKey so SDK never tries to read env or incoming headers
