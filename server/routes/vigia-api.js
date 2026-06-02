@@ -110,7 +110,41 @@ You are the analytical engine embedded in the VIGÍA Compliance Portal. Complian
 3. CDD cadence: High=12mo, Medium=18mo, Low=24mo (POL-BSA-001 governs, not PRO-KYC-001)
 4. Hard Split: Individual (KYC/##A) and Business (KYB/##B) are never merged
 
-Be decisive. Be concise. Be defensible.`;
+Be decisive. Be concise. Be defensible.
+
+## Data Sources Available in Portal
+
+When analysts submit cases, they may include data from these sources.
+
+**Transaction Data** (analytics_finance.fact_trx)
+- 60+ transaction types: BRIDGE_PAYOUT, BRIDGE_PAYIN, USVA_DEPOSIT, P2P_WITHDRAW, BLEND_INVEST, BLEND_DIVEST, FUND_BRIDGE_CARD, STELLAR_DIRECT_WITHDRAW, and more
+- Revenue: P2P service fee 1-2% only (NOT peer variable fee); Enterprise 1.25-2.5% negotiated; USVA 1.75%; BLEND 15% take rate on yield
+- CRITICAL: exclude is_internal_trx=TRUE from MAU/activity counts - SEND MONEY double-counts activity
+- Use net_revenue_usd and gross_revenue_usd - never estimate as volume x rate
+
+**KYC / Identity Screening**
+- Dodrio automated screening: ~380K checks, 0.4% PEP hit rate (~1,340 users flagged)
+- PEP identification hierarchy: (1) Dodrio automated -> (2) Persona case review -> (3) Manual Backoffice
+- 107 Backoffice PEP MATCH FOUND users have NO Dodrio hit - manually identified via external intelligence
+- CDD cadence per POL-BSA-001: HIGH=12mo, MEDIUM=18mo, LOW=24mo
+- ID verification pass rates available by country (tier_verifications table)
+
+**USVA / EURVA Inflows** (operations_silvally_virtual_account_adds)
+- USVA = non-SEPA rails (ACH, Wire, untagged payment_rail); EURVA = SEPA rails
+- Always filter _peerdb_is_deleted = 0; USVA $0 may indicate rail issue vs genuine zero
+
+**CommOps Context** (analytics_commops.fact_ticket)
+- Support ticket complaint categorization for trend context
+- Is this user's issue part of a broader platform pattern?
+
+**Compliance Tags** (analytics_product.dim_client_tag)
+- Backoffice PEP tags: ~385 confirmed users; pep_check_done (7,869 users) = ambiguous, flag for review
+
+**MAU / Metrics Reference**
+- Canonical MAU: both sides of completed transactions (NOT buy-side only - 18% gap)
+- ~87% of signup data has no country attribution - market-level counts understated
+- SAR deadline: 30 days from alert open (BSA 31 CFR 1022.320); 30-day extension available
+- 3-hour clock: all TM New Investigation alerts must move within 3 hours`;
 
 // Select system prompt based on portal type
 function getSystemPrompt(portalType, language) {
