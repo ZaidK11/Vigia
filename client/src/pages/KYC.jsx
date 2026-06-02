@@ -15,6 +15,36 @@ function timeAgo(ts) {
 function getToken() { return localStorage.getItem('vigia_token'); }
 const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
+
+// ── Quick Intelligence Query Button ─────────────────────────────
+function QuickQueryButton({ label, endpoint, body, renderResult }) {
+  const [result, setResult] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const query = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { ...authHdr(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+      setResult(renderResult(await res.json()));
+    } catch(e) { setResult('Query failed'); }
+    setLoading(false);
+  };
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <button onClick={query} disabled={loading} style={{
+        background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280',
+        padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: loading ? 'wait' : 'pointer',
+        fontWeight: '500'
+      }}>{loading ? '⟳' : label}</button>
+      {result && <span style={{ fontSize: '11px', color: '#374151', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{result}</span>}
+    </div>
+  );
+}
+
 // ── Build investigation command ──────────────────────────────────
 function buildKycInvestigationCommand(app) {
   return `You are a KYC verification analyst at Airtm, a US MSB (FinCEN) and Argentina VASP (UIF/CNV).
@@ -365,6 +395,36 @@ function AppDetail({ appId, onClose }) {
             <p className="text-xs text-gray-400 mt-3">
               All logged actions are recorded in the audit trail. Analyst must complete the action in Persona separately.
             </p>
+
+          {/* Quick Intelligence */}
+          {(app?.userId || app?.id) && (
+            <div style={{ marginTop: '16px', borderTop: '1px solid #f3f4f6', paddingTop: '14px' }}>
+              <p style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Quick Intelligence</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <QuickQueryButton
+                  label="🔍 PEP Source Check"
+                  endpoint="/api/ch/dodrio-pep-check"
+                  body={{ userId: app.userId || app.id }}
+                  renderResult={(d) => d.error ? 'Unavailable' : d.hasPepFlag ? '⚠️ PEP — ' + (d.identificationPath||'Dodrio hit') : '✅ No PEP flags (Dodrio)'}
+                />
+                <QuickQueryButton
+                  label="📋 KYC Funnel Status"
+                  endpoint="/api/ch/kyc-funnel-status"
+                  body={{ userId: app.userId || app.id }}
+                  renderResult={(d) => d.error ? 'Unavailable' : 'Status: ' + (d.currentStatus || 'Unknown')}
+                />
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ border: '1px solid #e5e7eb', color: '#6b7280', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '500', background: '#f9fafb' }}>
+                    CDD Cadence
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#374151' }}>
+                    {app.riskLevel === 'HIGH' || app.kycTier === 3 ? '12 months (HIGH risk)' : app.riskLevel === 'MEDIUM' || app.kycTier === 2 ? '18 months (MEDIUM risk)' : '24 months (LOW risk)'} — per POL-BSA-001
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           </div>
         </div>
       )}
