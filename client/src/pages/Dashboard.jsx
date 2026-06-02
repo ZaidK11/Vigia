@@ -45,6 +45,22 @@ function DashStat({ label, value, sub, color, loading }) {
   const cls = colors[color] || colors.teal;
   return (
     <div className={`rounded-xl border p-4 flex flex-col gap-1 ${cls}`}>
+
+      {/* Data Health Banner */}
+      {!localStorage.getItem('vigia_dh_dismissed') && (
+        <div style={{
+          background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px',
+          padding: '8px 14px', marginBottom: '12px', display: 'flex',
+          justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'
+        }}>
+          <span style={{ color: '#166534' }}>
+            <strong>Data note:</strong> ~87% of signup data lacks country attribution — market-level metrics are understated. USVA $0 days may indicate rail issues. Canonical MAU uses both sides of completed transactions.
+          </span>
+          <button onClick={() => { localStorage.setItem('vigia_dh_dismissed','1'); window.location.reload(); }}
+            style={{ background:'transparent', border:'none', color:'#16a34a', cursor:'pointer', fontSize:'18px', padding:'0 4px', marginLeft: '8px', flexShrink: 0 }}>×</button>
+        </div>
+      )}
+
       {loading ? (
         <div className="skeleton h-8 w-16 rounded" />
       ) : (
