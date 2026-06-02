@@ -32,6 +32,67 @@ function secAgo(ts) {
 function getToken() { return localStorage.getItem('vigia_token'); }
 const authHdr = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
+
+// ── Compliance Context Quick Buttons ────────────────────────────
+function CommOpsTrendsButton() {
+  const [result, setResult] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const query = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/ch/commops-complaint-reasons', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('vigia_token') } });
+      const d = await res.json();
+      if (d.error) { setResult('Unavailable'); return; }
+      const top3 = (d.reasons||[]).slice(0,3).map(r => r.reason + ' ' + r.pct + '%').join(' · ');
+      setResult(top3 || 'No data');
+    } catch(e) { setResult('Failed'); }
+    setLoading(false);
+  };
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <button onClick={query} disabled={loading} style={{ background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: '500' }}>
+        {loading ? '⟳' : '📊 CommOps Trends'}
+      </button>
+      {result && <span style={{ fontSize: '11px', color: '#374151', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{result}</span>}
+    </div>
+  );
+}
+
+function UsvaStatusButton() {
+  const [result, setResult] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const query = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/ch/usva-inflows-today', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('vigia_token') } });
+      const d = await res.json();
+      if (d.error) { setResult('Unavailable'); return; }
+      const arrow = (d.change||0) >= 0 ? '↑' : '↓';
+      setResult('USVA today: $' + Number(d.todayVol||0).toLocaleString() + ' ' + arrow + Math.abs(d.change||0) + '% vs yest');
+    } catch(e) { setResult('Failed'); }
+    setLoading(false);
+  };
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <button onClick={query} disabled={loading} style={{ background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: '500' }}>
+        {loading ? '⟳' : '💸 USVA Inflow Status'}
+      </button>
+      {result && <span style={{ fontSize: '11px', color: '#374151' }}>{result}</span>}
+    </div>
+
+              {/* Compliance Context */}
+              <div style={{ marginTop: '12px', borderTop: '1px solid #f3f4f6', paddingTop: '12px' }}>
+                <p style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Compliance Context</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <CommOpsTrendsButton />
+                  <UsvaStatusButton />
+                </div>
+              </div>
+
+  );
+}
+
+
 // ── Ticket Detail Panel ─────────────────────────────────────────
 function TicketDetail({ ticketId, onClose }) {
   const { user: authUser } = useAuth();
