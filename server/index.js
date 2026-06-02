@@ -28,6 +28,7 @@ const dashboardRouter = require('./routes/dashboard');
 const ckeRouter = require('./routes/cke');
 const analyticsRouter = require('./routes/analytics');
 const regulatoryFeedRouter = require('./routes/regulatoryFeed');
+const clickhouseQueriesRouter = require('./routes/clickhouse-queries');
 const { startScheduler } = require('./jobs/updateDashboard');
 
 const path = require('path');
@@ -90,7 +91,8 @@ app.use('/api/feedback', requireAuth, feedbackRouter); // verdict feedback loop
 app.use('/api/dashboard', requireAuth, requireRole('FRAUD_INVESTIGATOR', 'KYC_ANALYST', 'TM_ANALYST', 'LEADERSHIP'), dashboardRouter); // compliance only
 app.use('/api/cke', requireAuth, requireRole('LEADERSHIP'), ckeRouter); // CKE bridge — Leadership only
 app.use('/api/analytics', requireAuth, analyticsRouter); // Analytics dashboards
-app.use('/api', regulatoryFeedRouter); // Regulatory Intel Feed — POST (Sophia, bearer secret) + GET (any auth'd user)
+app.use('/api', regulatoryFeedRouter); // Regulatory Intel Feed
+app.use('/api/ch', requireAuth, clickhouseQueriesRouter); // ClickHouse Quick Intelligence Queries — POST (Sophia, bearer secret) + GET (any auth'd user)
 
 // Serve React static build
 app.use(express.static(path.join(__dirname, 'public')));
@@ -151,3 +153,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
