@@ -79,16 +79,6 @@ function UsvaStatusButton() {
       </button>
       {result && <span style={{ fontSize: '11px', color: '#374151' }}>{result}</span>}
     </div>
-
-              {/* Compliance Context */}
-              <div style={{ marginTop: '12px', borderTop: '1px solid #f3f4f6', paddingTop: '12px' }}>
-                <p style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Compliance Context</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <CommOpsTrendsButton />
-                  <UsvaStatusButton />
-                </div>
-              </div>
-
   );
 }
 
@@ -667,6 +657,15 @@ export default function Support() {
           {searchResult && !searchLoading && <SearchResult result={searchResult} />}
         </div>
       )}
+
+      {/* Compliance Context — Quick Intelligence */}
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Compliance Context</p>
+        <div className="flex flex-col gap-2">
+          <CommOpsTrendsButton />
+          <UsvaStatusButton />
+        </div>
+      </div>
 
       {/* Queue — SECONDARY */}
       <div>
