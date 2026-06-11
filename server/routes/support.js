@@ -248,7 +248,7 @@ Also: is escalation to compliance needed? (YES/NO and one-line reason)`;
 }
 
 // ── Role enforcement for ticket-specific routes ────────────────
-const SUPPORT_ROLES = ['SUPPORT_ANALYST', 'LEADERSHIP'];
+const SUPPORT_ROLES = ['SUPPORT_ANALYST', 'COMPLIANCE_MANAGER', 'LEADERSHIP'];
 function requireSupport(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   if (!SUPPORT_ROLES.includes(req.user.role)) {
