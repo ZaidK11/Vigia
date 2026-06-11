@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import VigiaResponse from '../components/VigiaResponse.jsx';
 import EddButton from '../components/EddButton.jsx';
+import AlertTriageSection from '../components/AlertTriageSection.jsx';
 import { useAuth } from '../App.jsx';
 
 function timeAgo(ts) {
@@ -458,6 +459,7 @@ export default function KYC() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
   const [showList, setShowList] = useState(false);
+  const [activeTab, setActiveTab] = useState('applications'); // 'applications' | 'alert-triage'
 
   useEffect(() => {
     api.kyc.applications()
@@ -482,6 +484,10 @@ export default function KYC() {
     setSearchLoading(false);
   };
 
+  const pending = apps.filter(a => ['pending', 'needs_review', 'created'].includes(a.status));
+  const waiting = apps.filter(a => ['waiting', 'failed'].includes(a.status));
+
+  // If a detail view is open, render it full-screen regardless of tab
   if (selectedId) {
     return (
       <div className="h-[calc(100vh-3.5rem)] overflow-y-auto bg-gray-50">
@@ -490,11 +496,34 @@ export default function KYC() {
     );
   }
 
-  const pending = apps.filter(a => ['pending', 'needs_review', 'created'].includes(a.status));
-  const waiting = apps.filter(a => ['waiting', 'failed'].includes(a.status));
-
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
+
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f3f4f6',
+        borderRadius: 10, padding: 4, width: 'fit-content' }}>
+        {[
+          ['applications', '🪪 Applications'],
+          ['alert-triage', '🚨 Alert Triage'],
+        ].map(([key, label]) => (
+          <button key={key} onClick={() => setActiveTab(key)}
+            style={{
+              padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 700,
+              border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+              background: activeTab === key ? '#fff' : 'transparent',
+              color:      activeTab === key ? '#111827' : '#6b7280',
+              boxShadow:  activeTab === key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Alert Triage tab */}
+      {activeTab === 'alert-triage' && <AlertTriageSection />}
+
+      {/* Applications tab */}
+      {activeTab === 'applications' && <>
 
       {/* Search — PRIMARY */}
       <div className="mb-6">
@@ -582,6 +611,8 @@ export default function KYC() {
           </div>
         )}
       </div>
+
+      </> /* end applications tab */}
     </div>
   );
 }

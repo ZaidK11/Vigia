@@ -61,7 +61,14 @@ export const api = {
     applications: () => req('/api/kyc/applications'),
     application: (id) => req(`/api/kyc/application/${id}`),
     decision: (applicationId, decision, notes) =>
-      req('/api/kyc/decision', { method: 'POST', body: JSON.stringify({ applicationId, decision, notes }) })
+      req('/api/kyc/decision', { method: 'POST', body: JSON.stringify({ applicationId, decision, notes }) }),
+    alertQueue: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return req(`/api/kyc/alert-queue${qs ? '?' + qs : ''}`);
+    },
+    alertDetail: (userId) => req(`/api/kyc/alert-detail/${userId}`),
+    alertDecision: (userId, decision, notes) =>
+      req('/api/kyc/alert-decision', { method: 'POST', body: JSON.stringify({ userId, decision, notes }) })
   },
 
   tm: {

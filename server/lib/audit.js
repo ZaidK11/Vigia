@@ -49,4 +49,15 @@ function getRecentLogs(limit = 50, userEmail = null) {
   ).all(limit);
 }
 
-module.exports = { logAction, getRecentLogs };
+// Returns user IDs that have already been triaged (for alert queue filtering)
+function getTriagedUserIds() {
+  try {
+    return getDb().prepare(
+      `SELECT DISTINCT resource_id FROM audit_log WHERE action = 'ALERT_TRIAGE_DECISION' AND resource_id IS NOT NULL`
+    ).all().map(r => r.resource_id);
+  } catch {
+    return [];
+  }
+}
+
+module.exports = { logAction, getRecentLogs, getTriagedUserIds };
